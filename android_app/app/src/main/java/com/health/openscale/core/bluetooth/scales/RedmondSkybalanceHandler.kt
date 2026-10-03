@@ -45,15 +45,11 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
     override fun supportFor(device: ScannedDeviceInfo): DeviceSupport? {
         val model = MODEL_NAMES[device.name.trim().uppercase(Locale.US)] ?: return null
 
+        val capabilities = setOf(DeviceCapability.LIVE_WEIGHT_STREAM)
         return DeviceSupport(
-            displayName = "REDMOND SkyBalance ${model}",
-            capabilities = setOf(
-                DeviceCapability.HISTORY_READ,
-                DeviceCapability.LIVE_WEIGHT_STREAM
-            ),
-            implemented = setOf(
-                DeviceCapability.HISTORY_READ
-            ),
+            displayName = "REDMOND " + model,
+            capabilities = capabilities,
+            implemented = capabilities,
             linkMode = LinkMode.CONNECT_GATT
         )
     }
