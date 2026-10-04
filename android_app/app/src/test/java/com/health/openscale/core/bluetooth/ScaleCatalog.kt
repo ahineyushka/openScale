@@ -57,6 +57,7 @@ import com.health.openscale.core.bluetooth.scales.MedisanaBs44xHandler
 import com.health.openscale.core.bluetooth.scales.MiScaleHandler
 import com.health.openscale.core.bluetooth.scales.MiScaleS400Handler
 import com.health.openscale.core.bluetooth.scales.OkOkHandler
+import com.health.openscale.core.bluetooth.scales.RedmondSkybalanceHandler
 import com.health.openscale.core.bluetooth.scales.OmronWlcHandler
 import com.health.openscale.core.bluetooth.scales.PicoocHandler
 import com.health.openscale.core.bluetooth.scales.PicoocBroadcastHandler
@@ -300,6 +301,11 @@ object ScaleCatalog {
         device("BCM-500") claimedBy OmronWlcHandler::class.java,
         device("VIVA") claimedBy OmronWlcHandler::class.java,
         device("BLEsmart_0001000C0080E1A2B3C4") claimedBy OmronWlcHandler::class.java,
+        device("RS-73S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-744S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-745S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-762S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-773S") claimedBy RedmondSkybalanceHandler::class.java,
 
         // --- Matched by advertisement fingerprint, not by name ---
         // Yunmai X: advertised service 0x1320.
