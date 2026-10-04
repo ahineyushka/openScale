@@ -14,37 +14,14 @@ import com.health.openscale.core.bluetooth.data.ScaleUser
 import com.health.openscale.core.data.Kg
 import com.health.openscale.core.data.MeasurementType
 import com.health.openscale.core.service.ScannedDeviceInfo
-import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-/**
- * REDMOND SkyBalance floor scales using the standard Bluetooth SIG Weight Scale Service.
- *
- * Verified against a real RS-744S Bluetooth HCI capture:
- * - local name: RS-744S
- * - Weight Scale Service: 0x181D
- * - Weight Scale Feature: 0x2A9E (read)
- * - Weight Measurement: 0x2A9D (indicate)
- *
- * Ready for Sky groups RS-73S, RS-744S, RS-745S, RS-762S and RS-773S into the same
- * floor-scale family. The five product names therefore share this handler.
- *
- * The real RS-744S capture contains:
- * - live 0x2A9D frames with flags=0x00 and no timestamp;
- * - stored/result 0x2A9D frames with flags=0x02 and a timestamp.
- *
- * Only timestamped frames are persisted. The live frames are transient display updates and can
- * repeat many times during one weighing session.
- *
- * No authentication, custom 0x7802 service, Current Time write, Body Composition Service,
- * User Data Service or Battery Service was observed in the RS-744S capture.
- */
 class RedmondSkybalanceHandler : ScaleDeviceHandler() {
 
     override fun supportFor(device: ScannedDeviceInfo): DeviceSupport? {
         val model = MODEL_NAMES[device.name.trim().uppercase(Locale.US)] ?: return null
-
         val capabilities = setOf(DeviceCapability.LIVE_WEIGHT_STREAM)
         return DeviceSupport(
             displayName = "REDMOND " + model,
@@ -55,9 +32,8 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
     }
 
     override fun onConnected(user: ScaleUser) {
-        publishedTimestamps.clear()
+        finalPublishedForSession = false
         setNotifyOn(SVC_WEIGHT_SCALE, CHR_WEIGHT_MEASUREMENT)
-
         if (hasCharacteristic(SVC_WEIGHT_SCALE, CHR_WEIGHT_SCALE_FEATURE)) {
             readFrom(SVC_WEIGHT_SCALE, CHR_WEIGHT_SCALE_FEATURE)
         }
@@ -71,43 +47,48 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         when (characteristic) {
             CHR_WEIGHT_MEASUREMENT -> {
                 val parsed = parseWeightMeasurement(data) ?: run {
-                    logW("REDMOND: invalid Weight Measurement payload ${data.toHexPreview(24)}")
+                    logW("REDMOND: invalid Weight Measurement payload \${data.toHexPreview(24)}")
                     return
                 }
 
                 if (!parsed.hasTimestamp) {
-                    logD("REDMOND ${parsed.weightKg} kg live frame without timestamp; not storing")
+                    finalPublishedForSession = false
+                    logD("REDMOND \${parsed.weightKg} kg live frame without timestamp; not storing")
                     return
                 }
 
-                val timestamp = parsed.measurement.dateTime?.time ?: return
-                if (!publishedTimestamps.add(timestamp)) {
-                    logD("Skipping repeated REDMOND measurement at ${parsed.measurement.dateTime}")
+                if (finalPublishedForSession) {
+                    logD("Skipping repeated REDMOND final frame at \${parsed.measurement.dateTime}")
                     return
                 }
+
+                // The RS-744S device timestamp is stale in the real capture (2021-07-04).
+                // Use the phone's current time for the saved openScale measurement.
+                parsed.measurement.dateTime = Date()
+                finalPublishedForSession = true
 
                 logD(
-                    "REDMOND timestamped measurement: " +
-                        "${parsed.weightKg} kg at ${parsed.measurement.dateTime}"
+                    "REDMOND final measurement: " +
+                        "\${parsed.weightKg} kg at \${parsed.measurement.dateTime}"
                 )
                 publish(parsed.measurement)
             }
 
             CHR_WEIGHT_SCALE_FEATURE -> {
-                logD("REDMOND Weight Scale Feature: ${data.toHexPreview(16)}")
+                logD("REDMOND Weight Scale Feature: \${data.toHexPreview(16)}")
             }
 
             else -> {
                 logD(
                     "REDMOND unhandled characteristic $characteristic " +
-                        "${data.toHexPreview(24)}"
+                        "\${data.toHexPreview(24)}"
                 )
             }
         }
     }
 
     override fun onDisconnected() {
-        publishedTimestamps.clear()
+        finalPublishedForSession = false
     }
 
     internal data class ParsedWeight(
@@ -116,23 +97,11 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         val hasTimestamp: Boolean
     )
 
-    /**
-     * Decode Bluetooth SIG Weight Measurement (0x2A9D).
-     *
-     * Flags:
-     * bit 0 = 0 kg / 1 lb
-     * bit 1 = timestamp present
-     * bit 2 = user ID present
-     * bit 3 = BMI + height present
-     *
-     * RS-744S capture observed flags 0x00 and 0x02 only.
-     */
     internal fun parseWeightMeasurement(data: ByteArray): ParsedWeight? {
         if (data.size < 3) return null
 
         val flags = u8(data, 0)
         var offset = 1
-
         val isLb = (flags and 0x01) != 0
         val hasTimestamp = (flags and 0x02) != 0
         val hasUserId = (flags and 0x04) != 0
@@ -162,27 +131,22 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
             val minute = u8(data, offset + 5)
             val second = u8(data, offset + 6)
 
-            val calendar = Calendar.getInstance().apply {
+            val calendar = java.util.Calendar.getInstance().apply {
                 clear()
                 isLenient = false
                 set(year, month - 1, day, hour, minute, second)
             }
-
             measurement.dateTime = runCatching { calendar.time }.getOrNull() ?: return null
         }
 
         if (hasUserId || hasBmiHeight) {
             logW(
                 "REDMOND optional Weight Measurement fields are not decoded yet: " +
-                    "flags=0x${flags.toString(16)}"
+                    "flags=0x\${flags.toString(16)}"
             )
         }
 
-        return ParsedWeight(
-            measurement = measurement,
-            weightKg = weightKg,
-            hasTimestamp = hasTimestamp
-        )
+        return ParsedWeight(measurement, weightKg, hasTimestamp)
     }
 
     private fun u8(data: ByteArray, offset: Int): Int =
@@ -192,7 +156,7 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         (data[offset].toInt() and 0xFF) or
             ((data[offset + 1].toInt() and 0xFF) shl 8)
 
-    private val publishedTimestamps = mutableSetOf<Long>()
+    private var finalPublishedForSession = false
 
     private companion object {
         private val SVC_WEIGHT_SCALE = uuid16Static(0x181D)
