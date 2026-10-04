@@ -33,6 +33,7 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
 
     override fun onConnected(user: ScaleUser) {
         finalPublishedForSession = false
+        lastPreviewWeightKg = Float.NaN
         setNotifyOn(SVC_WEIGHT_SCALE, CHR_WEIGHT_MEASUREMENT)
         if (hasCharacteristic(SVC_WEIGHT_SCALE, CHR_WEIGHT_SCALE_FEATURE)) {
             readFrom(SVC_WEIGHT_SCALE, CHR_WEIGHT_SCALE_FEATURE)
@@ -53,6 +54,20 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
 
                 if (!parsed.hasTimestamp) {
                     finalPublishedForSession = false
+
+                    // Follow the established openScale pattern for streaming scales:
+                    // surface live weight through userInfo(), but never publish() it.
+                    // Throttle small changes to avoid flooding the UI with updates.
+                    if (lastPreviewWeightKg.isNaN() ||
+                        kotlin.math.abs(parsed.weightKg - lastPreviewWeightKg) >= LIVE_PREVIEW_STEP_KG
+                    ) {
+                        userInfo(
+                            com.health.openscale.R.string.bluetooth_scale_info_measuring_weight,
+                            parsed.weightKg
+                        )
+                        lastPreviewWeightKg = parsed.weightKg
+                    }
+
                     logD("REDMOND ${parsed.weightKg} kg live frame without timestamp; not storing")
                     return
                 }
@@ -89,6 +104,7 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
 
     override fun onDisconnected() {
         finalPublishedForSession = false
+        lastPreviewWeightKg = Float.NaN
     }
 
     internal data class ParsedWeight(
@@ -162,6 +178,7 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
             ((data[offset + 1].toInt() and 0xFF) shl 8)
 
     private var finalPublishedForSession = false
+    private var lastPreviewWeightKg = Float.NaN
 
     private companion object {
         private val SVC_WEIGHT_SCALE = uuid16Static(0x181D)
@@ -177,6 +194,7 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         )
 
         private const val LB_TO_KG = 0.45359237f
+        private const val LIVE_PREVIEW_STEP_KG = 0.05f
 
         private fun uuid16Static(short: Int): UUID =
             UUID.fromString(
