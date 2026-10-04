@@ -47,41 +47,41 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         when (characteristic) {
             CHR_WEIGHT_MEASUREMENT -> {
                 val parsed = parseWeightMeasurement(data) ?: run {
-                    logW("REDMOND: invalid Weight Measurement payload \${data.toHexPreview(24)}")
+                    logW("REDMOND: invalid Weight Measurement payload ${data.toHexPreview(24)}")
                     return
                 }
 
                 if (!parsed.hasTimestamp) {
                     finalPublishedForSession = false
-                    logD("REDMOND \${parsed.weightKg} kg live frame without timestamp; not storing")
+                    logD("REDMOND ${parsed.weightKg} kg live frame without timestamp; not storing")
                     return
                 }
 
                 if (finalPublishedForSession) {
-                    logD("Skipping repeated REDMOND final frame at \${parsed.measurement.dateTime}")
+                    logD("Skipping repeated REDMOND final frame at ${parsed.measurement.dateTime}")
                     return
                 }
 
                 // The RS-744S device timestamp is stale in the real capture (2021-07-04).
                 // Use the phone's current time for the saved openScale measurement.
-                parsed.measurement.dateTime = Date()
+                stampWithPhoneTime(parsed.measurement)
                 finalPublishedForSession = true
 
                 logD(
                     "REDMOND final measurement: " +
-                        "\${parsed.weightKg} kg at \${parsed.measurement.dateTime}"
+                        "${parsed.weightKg} kg at ${parsed.measurement.dateTime}"
                 )
                 publish(parsed.measurement)
             }
 
             CHR_WEIGHT_SCALE_FEATURE -> {
-                logD("REDMOND Weight Scale Feature: \${data.toHexPreview(16)}")
+                logD("REDMOND Weight Scale Feature: ${data.toHexPreview(16)}")
             }
 
             else -> {
                 logD(
                     "REDMOND unhandled characteristic $characteristic " +
-                        "\${data.toHexPreview(24)}"
+                        "${data.toHexPreview(24)}"
                 )
             }
         }
@@ -142,11 +142,16 @@ class RedmondSkybalanceHandler : ScaleDeviceHandler() {
         if (hasUserId || hasBmiHeight) {
             logW(
                 "REDMOND optional Weight Measurement fields are not decoded yet: " +
-                    "flags=0x\${flags.toString(16)}"
+                    "flags=0x${flags.toString(16)}"
             )
         }
 
         return ParsedWeight(measurement, weightKg, hasTimestamp)
+    }
+
+    internal fun stampWithPhoneTime(measurement: ScaleMeasurement): ScaleMeasurement {
+        measurement.dateTime = Date()
+        return measurement
     }
 
     private fun u8(data: ByteArray, offset: Int): Int =
