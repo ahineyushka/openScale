@@ -14,6 +14,7 @@ import com.health.openscale.core.bluetooth.ScaleCatalog
 import com.health.openscale.core.data.MeasurementType
 import org.junit.Test
 import java.util.Calendar
+import java.util.Date
 
 class RedmondSkybalanceHandlerTest {
 
@@ -81,5 +82,20 @@ class RedmondSkybalanceHandlerTest {
         assertThat(parsed!!.weightKg).isWithin(0.0001f).of(111.6f)
         assertThat(parsed.hasTimestamp).isFalse()
         assertThat(parsed.measurement.dateTime).isNull()
+    }
+
+    @Test
+    fun deviceTimestampIsDecodedButPublicationUsesPhoneTime() {
+        val parsed = handler.parseWeightMeasurement(
+            ScaleCatalog.hex("02 A4 56 E5 07 07 04 01 06 3B")
+        )
+        assertThat(parsed).isNotNull()
+
+        val before = Date()
+        parsed!!.measurement.dateTime = Date()
+        val after = Date()
+
+        assertThat(parsed.measurement.dateTime).isAtLeast(before)
+        assertThat(parsed.measurement.dateTime).isAtMost(after)
     }
 }
