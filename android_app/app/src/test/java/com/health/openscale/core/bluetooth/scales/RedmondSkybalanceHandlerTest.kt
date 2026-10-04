@@ -92,7 +92,7 @@ class RedmondSkybalanceHandlerTest {
         assertThat(parsed).isNotNull()
 
         val before = Date()
-        parsed!!.measurement.dateTime = Date()
+        handler.stampWithPhoneTime(parsed!!.measurement)
         val after = Date()
 
         assertThat(parsed.measurement.dateTime).isAtLeast(before)
