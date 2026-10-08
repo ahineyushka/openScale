@@ -268,26 +268,26 @@
     <string name="measurement_type_dialog_confirm_unit_change_title">Подтвердите изменение единицы измерения</string>
     <string name="measurement_type_dialog_confirm_unit_change_message">Изменение единицы измерения для \'%1$s\' с %2$s на %3$s преобразует существующие данные. Это действие может занять некоторое время и не может быть легко изменено обратно. Желаете продолжить?</string>
 
-    <string name="formula_label_body_fat">Формула жировой массы</string>
+    <string name="formula_label_body_fat">Формула массы жира</string>
     <string name="formula_label_body_water">Формула содержания воды</string>
     <string name="formula_label_lbm">Формула безжировой массы</string>
     <string name="formula_warning_title">Расчёт по формулам</string>
     <string name="formula_warning_message">Эта метрика доступна только для чтения и рассчитывается автоматически. Она обновляется при изменении базовых значений. Применяется к новым или измененным метрикам; существующие остаются без изменений.</string>
 
     <string name="formula_off">Нет</string>
-    <string name="formula_bf_deurenberg_1991">Формула Деуренберга (1991)</string>
+    <string name="formula_bf_deurenberg_1991">Деуренберг\n(1991)</string>
     <string name="formula_bf_deurenberg_1992">Деуренберг\n(1992)</string>
-    <string name="formula_bf_eddy_1976">Формула Eddy et al. (1976)</string>
-    <string name="formula_bf_gallagher_2000_non_asian">Gallagher (2000) – Неазиатский</string>
-    <string name="formula_bf_gallagher_2000_asian">Gallagher (2000) – Азиатский</string>
+    <string name="formula_bf_eddy_1976">Eddy et al.\n(1976)</string>
+    <string name="formula_bf_gallagher_2000_non_asian">Gallagher\n(неазиат.)</string>
+    <string name="formula_bf_gallagher_2000_asian">Gallagher\n(азиатский)</string>
     <string name="formula_bw_behnke_1963">Формула Behnke et al. (1963)</string>
     <string name="formula_bw_delwaide_crenier_1973">Формула Delwaide &amp; Crenier (1973)</string>
     <string name="formula_bw_hume_weyers_1971">Формула Hume &amp; Weyers (1971)</string>
     <string name="formula_bw_lee_song_kim_2001">Формула Lee, Song &amp; Kim (2001)</string>
-    <string name="formula_lbm_boer_1984">Формула Boer (1984)</string>
-    <string name="formula_lbm_hume_1966">Формула Hume (1966)</string>
-    <string name="formula_lbm_weight_minus_body_fat">Разница между массами тела и жира</string>
-    <string name="formula_bf_us_navy">Формула U.S. Navy</string>
+    <string name="formula_lbm_boer_1984">Boer\n(1984)</string>
+    <string name="formula_lbm_hume_1966">Hume\n(1966)</string>
+    <string name="formula_lbm_weight_minus_body_fat">Тело − жир</string>
+    <string name="formula_bf_us_navy">U.S. Navy</string>
 
     <string name="formula_desc_off_short">Нет автоматического расчёта</string>
     <string name="formula_desc_off_long">Этот показатель автоматически не рассчитывается. Вы можете ввести значения вручную.</string>
