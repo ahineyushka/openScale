@@ -317,8 +317,6 @@
     <string name="lbm_hume_1966_long">Оценка безжировой массы по формуле Хьюма (1966). Простая модель на основе массы тела, роста и пола.</string>
     <string name="lbm_weight_minus_bf_short">Разница между общей массой и массой жира</string>
     <string name="lbm_weight_minus_bf_long">Сухая масса тела рассчитывается как общий вес за вычетом массы жира, исходя из выбранной формулы соотношения жировых отложений. Точность зависит от оценки массы тела.</string>
-    <string name="bf_us_navy_short">Метод ВМФ США</string>
-    <string name="bf_us_navy_long">Рассчитывает процентное содержание жира в организме на основе окружности талии, шеи и (для женщин) бедер в соответствии со стандартом ВМС США.</string>
 
     <string name="batch_update_status_report">%1$d: %2$s</string>
     <string name="dialog_title_confirm_generic">Подтвердить %1$s?</string>
