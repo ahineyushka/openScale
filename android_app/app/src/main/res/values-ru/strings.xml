@@ -275,17 +275,17 @@
     <string name="formula_warning_message">Эта метрика доступна только для чтения и рассчитывается автоматически. Она обновляется при изменении базовых значений. Применяется к новым или измененным метрикам; существующие остаются без изменений.</string>
 
     <string name="formula_off">Нет</string>
-    <string name="formula_bf_deurenberg_1991">Deurenberg (1991)</string>
+    <string name="formula_bf_deurenberg_1991">Деуренберг\n(1991)</string>
     <string name="formula_bf_deurenberg_1992">Deurenberg (1992)</string>
-    <string name="formula_bf_eddy_1976">Eddy et al. (1976)</string>
-    <string name="formula_bf_gallagher_2000_non_asian">Gallagher (неазиат.)</string>
-    <string name="formula_bf_gallagher_2000_asian">Gallagher (азиатский)</string>
+    <string name="formula_bf_eddy_1976">Eddy et al.\n(1976)</string>
+    <string name="formula_bf_gallagher_2000_non_asian">Gallagher\n(неазиат.)</string>
+    <string name="formula_bf_gallagher_2000_asian">Gallagher\n(азиатский)</string>
     <string name="formula_bw_behnke_1963">Формула Behnke et al. (1963)</string>
     <string name="formula_bw_delwaide_crenier_1973">Формула Delwaide &amp; Crenier (1973)</string>
     <string name="formula_bw_hume_weyers_1971">Формула Hume &amp; Weyers (1971)</string>
     <string name="formula_bw_lee_song_kim_2001">Формула Lee, Song &amp; Kim (2001)</string>
-    <string name="formula_lbm_boer_1984">Boer (1984)</string>
-    <string name="formula_lbm_hume_1966">Hume (1966)</string>
+    <string name="formula_lbm_boer_1984">Boer\n(1984)</string>
+    <string name="formula_lbm_hume_1966">Hume\n(1966)</string>
     <string name="formula_lbm_weight_minus_body_fat">Тело − жир</string>
     <string name="formula_bf_us_navy">U.S. Navy</string>
     <string name="bf_us_navy_short">Метод ВМФ США</string>
