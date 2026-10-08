@@ -288,6 +288,8 @@
     <string name="formula_lbm_hume_1966">Hume (1966)</string>
     <string name="formula_lbm_weight_minus_body_fat">Тело − жир</string>
     <string name="formula_bf_us_navy">U.S. Navy</string>
+    <string name="bf_us_navy_short">Метод ВМФ США</string>
+    <string name="bf_us_navy_long">Рассчитывает процентное содержание жира в организме на основе окружности талии, шеи и (для женщин) бедер в соответствии со стандартом ВМС США.</string>
 
     <string name="formula_desc_off_short">Нет автоматического расчёта</string>
     <string name="formula_desc_off_long">Этот показатель автоматически не рассчитывается. Вы можете ввести значения вручную.</string>
