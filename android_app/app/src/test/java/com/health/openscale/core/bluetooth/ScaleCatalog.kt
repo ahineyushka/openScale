@@ -220,6 +220,11 @@ object ScaleCatalog {
         device("RYFIT") claimedBy RyFitHandler::class.java,
         device("CULT Smart Scale Pro") claimedBy CultSmartScaleProHandler::class.java,
         device("realme Smart Scale") claimedBy RealmeSmartScaleHandler::class.java,
+        device("RS-73S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-744S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-745S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-762S") claimedBy RedmondSkybalanceHandler::class.java,
+        device("RS-773S") claimedBy RedmondSkybalanceHandler::class.java,
         device("YUNMAI-ISSE-1234") claimedBy YunmaiHandler::class.java,
         device("YUNMAI-SIGNAL-1234") claimedBy YunmaiHandler::class.java,
         device("01257B1234") claimedBy TrisaBodyAnalyzeHandler::class.java,
@@ -301,11 +306,6 @@ object ScaleCatalog {
         device("BCM-500") claimedBy OmronWlcHandler::class.java,
         device("VIVA") claimedBy OmronWlcHandler::class.java,
         device("BLEsmart_0001000C0080E1A2B3C4") claimedBy OmronWlcHandler::class.java,
-        device("RS-73S") claimedBy RedmondSkybalanceHandler::class.java,
-        device("RS-744S") claimedBy RedmondSkybalanceHandler::class.java,
-        device("RS-745S") claimedBy RedmondSkybalanceHandler::class.java,
-        device("RS-762S") claimedBy RedmondSkybalanceHandler::class.java,
-        device("RS-773S") claimedBy RedmondSkybalanceHandler::class.java,
 
         // --- Matched by advertisement fingerprint, not by name ---
         // Yunmai X: advertised service 0x1320.
