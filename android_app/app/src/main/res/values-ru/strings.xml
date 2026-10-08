@@ -275,7 +275,7 @@
     <string name="formula_warning_message">Эта метрика доступна только для чтения и рассчитывается автоматически. Она обновляется при изменении базовых значений. Применяется к новым или измененным метрикам; существующие остаются без изменений.</string>
 
     <string name="formula_off">Нет</string>
-    <string name="formula_bf_deurenberg_1991">Деуренберг\n(1991)</string>
+    <string name="formula_bf_deurenberg_1991">Deurenberg\n(1991)</string>
     <string name="formula_bf_deurenberg_1992">Deurenberg (1992)</string>
     <string name="formula_bf_eddy_1976">Eddy et al.\n(1976)</string>
     <string name="formula_bf_gallagher_2000_non_asian">Gallagher\n(неазиат.)</string>
