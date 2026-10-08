@@ -270,7 +270,7 @@
 
     <string name="formula_label_body_fat">Формула жировой массы</string>
     <string name="formula_label_body_water">Формула содержания воды</string>
-    <string name="formula_label_lbm">Формула мышечной массы тела</string>
+    <string name="formula_label_lbm">Формула безжировой массы</string>
     <string name="formula_warning_title">Расчёт по формулам</string>
     <string name="formula_warning_message">Эта метрика доступна только для чтения и рассчитывается автоматически. Она обновляется при изменении базовых значений. Применяется к новым или измененным метрикам; существующие остаются без изменений.</string>
 
@@ -293,8 +293,8 @@
     <string name="formula_desc_off_long">Этот показатель автоматически не рассчитывается. Вы можете ввести значения вручную.</string>
     <string name="bf_deurenberg_1991_short">Возрастная регрессия</string>
     <string name="bf_deurenberg_1991_long">Широко используемая популяционная формула с 1991 года. Подходит для взрослого населения в целом; может быть менее точной для очень худых или очень мускулистых людей.</string>
-    <string name="bf_deurenberg_1992_short">Адаптировано для подростков и взрослых</string>
-    <string name="bf_deurenberg_1992_long">Вариант, адаптированный для более молодых пользователей. Оценка общего назначения; спортивное или нетипичное телосложение может отличаться.</string>
+    <string name="bf_deurenberg_1992_short">Деуренберг (1992)\n(адаптировано для подростков и взрослых)</string>
+    <string name="bf_deurenberg_1992_long">Формула Деуренберга (1992)\n(адаптировано для подростков и взрослых)</string>
     <string name="bf_eddy_1976_short">Начальная модель, зависящая от пола</string>
     <string name="bf_eddy_1976_long">Более ранняя регрессия с отдельными коэффициентами для мужчин и женщин. Простая и быстрая, но не адаптированная к конкретным группам населения.</string>
     <string name="bf_gallagher_2000_non_asian_short">Gallagher (Неазиатский)</string>
