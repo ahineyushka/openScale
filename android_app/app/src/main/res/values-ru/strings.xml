@@ -168,7 +168,7 @@
     <string name="measurement_type_body_fat">Подкожный жир</string>
     <string name="measurement_type_water">Вода</string>
     <string name="measurement_type_muscle">Мышцы</string>
-    <string name="measurement_type_lbm">Мышечная масса</string>
+    <string name="measurement_type_lbm">Безжировая масса</string>
     <string name="measurement_type_bone">Скелет</string>
     <string name="measurement_type_waist">Талия</string>
     <string name="measurement_type_whr">Талия/бёдра</string>
@@ -215,7 +215,7 @@
     <string name="s400_bone_formula_label">Формула костной ткани</string>
     <string name="s400_bone_formula_mi_legacy">Регрессия на основе импеданса (устаревшая версия)</string>
     <string name="s400_bone_formula_heymsfield">Формула Стивена Хеймсфилда (антропометрическая)</string>
-    <string name="s400_bmr_formula_label">Формула основного обмена (BMR)</string>
+    <string name="s400_bmr_formula_label">Формула основного обмена</string>
     <string name="s400_bmr_formula_cun91">Формула Каннингема, 1991</string>
     <string name="s400_bmr_formula_cun80">Формула Каннингема, 1980</string>
     <string name="measurement_type_tdee">Суточный расход энергии</string>
@@ -309,9 +309,9 @@
     <string name="bw_hume_weyers_1971_long">Обычная модель массы воды в теле, использующая рост и вес с коэффициентами, зависящими от пола.</string>
     <string name="bw_lee_song_kim_2001_short">Формула Lee–Song–Kim</string>
     <string name="bw_lee_song_kim_2001_long">Более поздняя оценка массы воды в теле, была откалибрована на корейских группах. Проверьте, подходит ли это соответствие целевой аудитории.</string>
-    <string name="lbm_boer_1984_short">Boer LBM (клиническая)</string>
+    <string name="lbm_boer_1984_short">Безжировая масса — формула Бёра</string>
     <string name="lbm_boer_1984_long">Оценка мышечной массы тела, популярная в клинических условиях. Регрессия роста и веса в зависимости от пола.</string>
-    <string name="lbm_hume_1966_short">Hume LBM</string>
+    <string name="lbm_hume_1966_short">Безжировая масса — формула Хьюма</string>
     <string name="lbm_hume_1966_long">Ранняя модель сухой массы тела (общая масса тела за вычетом массы жировой ткани). Простая и широко используемая; не рассчитана на очень спортивное телосложение.</string>
     <string name="lbm_weight_minus_bf_short">Разница между общей массой и массой жира</string>
     <string name="lbm_weight_minus_bf_long">Сухая масса тела рассчитывается как общий вес за вычетом массы жира, исходя из выбранной формулы соотношения жировых отложений. Точность зависит от оценки массы тела.</string>
@@ -427,7 +427,7 @@
     <string name="mi_body_comp_algorithm_label">Алгоритм состава тела</string>
     <string name="mi_algorithm_xiaomi">Xiaomi (оригинальное приложение)</string>
     <string name="mi_algorithm_bodymiscale_science">Научный</string>
-    <string name="mi_algorithm_description">Выберите способ расчёта состава тела по импедансу. «Xiaomi» воспроизводит расчёты оригинального приложения Mi Fit / Zepp Life. «Научный» использует опубликованные научные формулы (Siri, Pace, Wang, Schofield), а также рассчитывает белок и основной обмен (BMR). Применяется к новым измерениям с этих весов.</string>
+    <string name="mi_algorithm_description">Выберите способ расчёта состава тела по импедансу. «Xiaomi» воспроизводит расчёты оригинального приложения Mi Fit / Zepp Life. «Научный» использует опубликованные научные формулы (Siri, Pace, Wang, Schofield), а также рассчитывает белок и основной обмен. Применяется к новым измерениям с этих весов.</string>
 
     <!-- S400 Scale Configuration -->
     <string name="s400_bind_key_label">Ключ привязки BLE</string>
