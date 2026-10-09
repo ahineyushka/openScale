@@ -165,7 +165,7 @@
     <string name="content_desc_unknown_type">Неизвестный тип: %1$s</string>
     <string name="measurement_type_weight">Вес</string>
     <string name="measurement_type_bmi">ИМТ</string>
-    <string name="measurement_type_body_fat">Подкожный жир</string>
+    <string name="measurement_type_body_fat">Содержание жира</string>
     <string name="measurement_type_water">Вода</string>
     <string name="measurement_type_muscle">Мышцы</string>
     <string name="measurement_type_lbm">Мышечная масса</string>
@@ -268,7 +268,7 @@
     <string name="measurement_type_dialog_confirm_unit_change_title">Подтвердите изменение единицы измерения</string>
     <string name="measurement_type_dialog_confirm_unit_change_message">Изменение единицы измерения для \'%1$s\' с %2$s на %3$s преобразует существующие данные. Это действие может занять некоторое время и не может быть легко изменено обратно. Желаете продолжить?</string>
 
-    <string name="formula_label_body_fat">Формула жировой массы</string>
+    <string name="formula_label_body_fat">Формула\nсодержания жира</string>
     <string name="formula_label_body_water">Формула содержания воды</string>
     <string name="formula_label_lbm">Формула мышечной массы тела</string>
     <string name="formula_warning_title">Расчёт по формулам</string>
