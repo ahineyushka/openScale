@@ -269,7 +269,7 @@
     <string name="measurement_type_dialog_confirm_unit_change_message">Изменение единицы измерения для \'%1$s\' с %2$s на %3$s преобразует существующие данные. Это действие может занять некоторое время и не может быть легко изменено обратно. Желаете продолжить?</string>
 
     <string name="formula_label_body_fat">Формула массы жира</string>
-    <string name="formula_label_body_water">Формула содержания воды</string>
+    <string name="formula_label_body_water">Формула воды</string>
     <string name="formula_label_lbm">Формула безжировой массы</string>
     <string name="formula_warning_title">Расчёт по формулам</string>
     <string name="formula_warning_message">Эта метрика доступна только для чтения и рассчитывается автоматически. Она обновляется при изменении базовых значений. Применяется к новым или измененным метрикам; существующие остаются без изменений.</string>
@@ -280,10 +280,10 @@
     <string name="formula_bf_eddy_1976">Eddy et al. (1976)</string>
     <string name="formula_bf_gallagher_2000_non_asian">Gallagher (неазиат.)</string>
     <string name="formula_bf_gallagher_2000_asian">Gallagher (азиатский)</string>
-    <string name="formula_bw_behnke_1963">Формула Behnke et al. (1963)</string>
-    <string name="formula_bw_delwaide_crenier_1973">Формула Delwaide &amp; Crenier (1973)</string>
-    <string name="formula_bw_hume_weyers_1971">Формула Hume &amp; Weyers (1971)</string>
-    <string name="formula_bw_lee_song_kim_2001">Формула Lee, Song &amp; Kim (2001)</string>
+    <string name="formula_bw_behnke_1963">Формула Бенке (1963)</string>
+    <string name="formula_bw_delwaide_crenier_1973">Формула Дельвейда–Кренье (1973)</string>
+    <string name="formula_bw_hume_weyers_1971">Формула Хьюма–Вейерса (1971)</string>
+    <string name="formula_bw_lee_song_kim_2001">Формула Ли–Сон–Ким (2001)</string>
     <string name="formula_lbm_boer_1984">Boer (1984)</string>
     <string name="formula_lbm_hume_1966">Hume (1966)</string>
     <string name="formula_lbm_weight_minus_body_fat">Тело − жир</string>
@@ -303,14 +303,14 @@
     <string name="bf_gallagher_2000_non_asian_long">Формула Галлахера (2000), разработанная с учётом особенностей состава тела неазиатского населения. Точность оценки зависит от индивидуальных особенностей телосложения.</string>
     <string name="bf_gallagher_2000_asian_short">Формула Галлахера (азиатская)</string>
     <string name="bf_gallagher_2000_asian_long">Формула Галлахера (2000), разработанная с учётом особенностей состава тела азиатского населения. Может быть предпочтительнее для людей азиатского происхождения.</string>
-    <string name="bw_behnke_1963_short">Оценка содержания жидкости в теле по Behnke</string>
-    <string name="bw_behnke_1963_long">Классическая оценка общего содержания воды в организме. Простой подход, не индивидуализированный для спортсменов или людей с ограниченными возможностями.</string>
-    <string name="bw_delwaide_crenier_1973_short">Delwaide и Crenier</string>
-    <string name="bw_delwaide_crenier_1973_long">Формула объема воды в теле, акцентирующаяся на массе тела. Разумная общая оценка; точность зависит от телосложения.</string>
-    <string name="bw_hume_weyers_1971_short">Hume–Weyers формула общего количества воды в организме</string>
-    <string name="bw_hume_weyers_1971_long">Обычная модель массы воды в теле, использующая рост и вес с коэффициентами, зависящими от пола.</string>
-    <string name="bw_lee_song_kim_2001_short">Формула Lee–Song–Kim</string>
-    <string name="bw_lee_song_kim_2001_long">Более поздняя оценка массы воды в теле, была откалибрована на корейских группах. Проверьте, подходит ли это соответствие целевой аудитории.</string>
+    <string name="bw_behnke_1963_short">Формула Бенке (1963)</string>
+    <string name="bw_behnke_1963_long">Оценивает общее содержание воды по росту и полу. Вес в расчёте не используется. Подходит как простой ориентировочный метод.</string>
+    <string name="bw_delwaide_crenier_1973_short">Формула Дельвейда–Кренье (1973)</string>
+    <string name="bw_delwaide_crenier_1973_long">Оценивает общее содержание воды только по массе тела. Рост и пол в расчёте не используются, поэтому это наиболее простой из этих методов.</string>
+    <string name="bw_hume_weyers_1971_short">Формула Хьюма–Вейерса (1971)</string>
+    <string name="bw_hume_weyers_1971_long">Оценивает общее содержание воды по росту, весу и полу. Учитывает пол и оба основных антропометрических параметра.</string>
+    <string name="bw_lee_song_kim_2001_short">Формула Ли–Сон–Ким (2001)</string>
+    <string name="bw_lee_song_kim_2001_long">Оценивает общее содержание воды по росту, весу и полу. Формула разработана на корейской популяции, поэтому это стоит учитывать при выборе.</string>
     <string name="lbm_boer_1984_short">Формула Бёра (1984)</string>
     <string name="lbm_boer_1984_long">Оценивает безжировую массу по росту, весу и полу. В неё входят не только мышцы, но также вода, кости и внутренние органы; это расчётная, а не непосредственно измеренная величина.</string>
     <string name="lbm_hume_1966_short">Формула Хьюма (1966)</string>
