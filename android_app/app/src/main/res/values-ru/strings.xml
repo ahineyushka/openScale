@@ -280,10 +280,10 @@
     <string name="formula_bf_eddy_1976">Eddy et al. (1976)</string>
     <string name="formula_bf_gallagher_2000_non_asian">Gallagher (неазиат.)</string>
     <string name="formula_bf_gallagher_2000_asian">Gallagher (азиатский)</string>
-    <string name="formula_bw_behnke_1963">Формула Бенке (1963)</string>
-    <string name="formula_bw_delwaide_crenier_1973">Формула Дельвейда–Кренье (1973)</string>
-    <string name="formula_bw_hume_weyers_1971">Формула Хьюма–Вейерса (1971)</string>
-    <string name="formula_bw_lee_song_kim_2001">Формула Ли–Сон–Ким (2001)</string>
+    <string name="formula_bw_behnke_1963">Behnke et al. (1963)</string>
+    <string name="formula_bw_delwaide_crenier_1973">Delwaide & Crenier (1973)</string>
+    <string name="formula_bw_hume_weyers_1971">Hume & Weyers (1971)</string>
+    <string name="formula_bw_lee_song_kim_2001">Lee, Song & Kim (2001)</string>
     <string name="formula_lbm_boer_1984">Boer (1984)</string>
     <string name="formula_lbm_hume_1966">Hume (1966)</string>
     <string name="formula_lbm_weight_minus_body_fat">Тело − жир</string>
