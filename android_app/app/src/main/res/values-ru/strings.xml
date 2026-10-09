@@ -182,7 +182,7 @@
     <string name="measurement_type_caliper1">Кожная складка 1</string>
     <string name="measurement_type_caliper2">Кожная складка 2</string>
     <string name="measurement_type_caliper3">Кожная складка 3</string>
-    <string name="measurement_type_fat_caliper">% кожных складок</string>
+    <string name="measurement_type_fat_caliper">% жира по складкам</string>
     <string name="measurement_type_bmr">Основной обмен</string>
     <string name="measurement_type_heart_rate">Пульс</string>
     <string name="measurement_type_impedance">Импеданс (высокая частота)</string>
