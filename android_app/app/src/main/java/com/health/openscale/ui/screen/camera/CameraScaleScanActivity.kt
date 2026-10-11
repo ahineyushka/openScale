@@ -30,6 +30,7 @@ import android.view.View
 import android.net.Uri
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -61,6 +62,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     @Inject lateinit var userFacade: UserFacade
 
     private lateinit var preview: TextureView
+    private lateinit var photoPreview: ImageView
     private lateinit var status: TextView
     private lateinit var confirm: Button
     private lateinit var retry: Button
@@ -77,9 +79,18 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var savedUnit = "KG"
     private var stableWeight: Float? = null
     private var saving = false
-    private var photoMode = false
+    @Volatile private var photoMode = false
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) processSelectedPhoto(uri)
+        if (uri != null) {
+            processSelectedPhoto(uri)
+        } else {
+            photoMode = false
+            photoPreview.setImageDrawable(null)
+            photoPreview.visibility = View.GONE
+            preview.visibility = View.VISIBLE
+            status.text = getString(com.health.openscale.R.string.camera_align_display)
+            if (preview.isAvailable) preview.post { openCamera() }
+        }
     }
     @Volatile private var settingsLoaded = false
 
@@ -119,6 +130,13 @@ class CameraScaleScanActivity : ComponentActivity() {
                 canvas.drawRect(width * .12f, height * .25f, width * .88f, height * .75f, guidePaint)
             }
         }, FrameLayout.LayoutParams(-1, -1))
+        photoPreview = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.BLACK)
+            visibility = View.GONE
+        }
+        // The selected photo replaces the live camera preview so the test result's source is clear.
+        previewContainer.addView(photoPreview, FrameLayout.LayoutParams(-1, -1))
         root.addView(previewContainer, LinearLayout.LayoutParams(-1, 0, 1f))
         status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 20f; gravity = Gravity.CENTER
@@ -131,6 +149,17 @@ class CameraScaleScanActivity : ComponentActivity() {
             text = getString(com.health.openscale.R.string.camera_choose_photo)
             setOnClickListener {
                 photoMode = true
+                stableDigits = null
+                stableWeight = null
+                repeatedFrames = 0
+                stableAt = 0L
+                confirm.visibility = View.GONE
+                photoPreview.setImageDrawable(null)
+                photoPreview.visibility = View.GONE
+                preview.visibility = View.VISIBLE
+                status.text = getString(com.health.openscale.R.string.camera_select_photo_hint)
+                // Drop queued camera-frame work before processing the selected file.
+                cameraHandler?.removeCallbacksAndMessages(null)
                 closeCamera()
                 pickPhoto.launch(arrayOf("image/*"))
             }
@@ -138,7 +167,19 @@ class CameraScaleScanActivity : ComponentActivity() {
         row.addView(choosePhoto)
         retry = Button(this).apply {
             text = getString(com.health.openscale.R.string.camera_retry)
-            setOnClickListener { photoMode = false; stableDigits = null; stableWeight = null; repeatedFrames = 0; confirm.visibility = View.GONE; status.text = getString(com.health.openscale.R.string.camera_align_display); if (preview.isAvailable) openCamera() }
+            setOnClickListener {
+                photoMode = false
+                stableDigits = null
+                stableWeight = null
+                repeatedFrames = 0
+                stableAt = 0L
+                confirm.visibility = View.GONE
+                photoPreview.setImageDrawable(null)
+                photoPreview.visibility = View.GONE
+                preview.visibility = View.VISIBLE
+                status.text = getString(com.health.openscale.R.string.camera_align_display)
+                if (preview.isAvailable) openCamera()
+            }
         }
         confirm = Button(this).apply {
             text = getString(com.health.openscale.R.string.camera_confirm)
@@ -211,9 +252,16 @@ class CameraScaleScanActivity : ComponentActivity() {
     }
 
     private fun processSelectedPhoto(uri: Uri) {
+        status.text = getString(com.health.openscale.R.string.camera_processing_photo)
         cameraHandler?.post {
             try {
-                val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                // Decode a downsampled bitmap to keep memory use bounded for marketplace photos.
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+                var sampleSize = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / sampleSize > 1600) sampleSize *= 2
+                val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
                 if (bitmap == null) {
                     runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
                     return@post
@@ -229,9 +277,12 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                bitmap.recycle()
                 val digits = ScaleDisplayRecognizer.read(gray, width, height)
                 runOnUiThread {
+                    // Display the exact image that was analyzed, not the stale camera preview.
+                    photoPreview.setImageBitmap(bitmap)
+                    photoPreview.visibility = View.VISIBLE
+                    preview.visibility = View.GONE
                     if (digits == null) {
                         status.text = getString(com.health.openscale.R.string.camera_not_recognized)
                     } else {
@@ -266,6 +317,8 @@ class CameraScaleScanActivity : ComponentActivity() {
             if (i < bytes.size) gray[y * width + x] = bytes[i]
         }
         val digits = ScaleDisplayRecognizer.read(gray, width, height)
+        // The frame may have started processing just before the user chose a photo.
+        if (photoMode) return
         if (digits == null) { stableDigits = null; repeatedFrames = 0; return }
         if (digits == stableDigits) repeatedFrames++ else { stableDigits = digits; repeatedFrames = 1 }
         if (repeatedFrames >= 4) {
