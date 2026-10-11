@@ -629,6 +629,8 @@
     <string name="camera_unit_title">Weight unit shown on the scale</string>
     <string name="camera_scan">Scan weight from display</string>
     <string name="camera_choose_photo">Choose photo (test)</string>
+    <string name="camera_select_photo_hint">Select a photo to analyze</string>
+    <string name="camera_processing_photo">Analyzing selected photo…</string>
     <string name="camera_not_recognized">Display not recognized</string>
     <string name="camera_photo_error">Cannot read this photo</string>
     <string name="camera_align_display">Align the scale display in the centre of the preview</string>
