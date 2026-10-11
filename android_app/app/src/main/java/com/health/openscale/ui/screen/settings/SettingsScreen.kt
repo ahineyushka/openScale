@@ -91,6 +91,7 @@ fun SettingsScreen(
     val chartSettingsLabel = stringResource(R.string.settings_item_chart)
     val dataManagementLabel = stringResource(R.string.settings_item_data_management)
     val aboutLabel = stringResource(R.string.settings_item_about)
+    val recognitionLabel = stringResource(R.string.settings_item_recognition)
 
     val items = listOf(
         SettingsItem(
@@ -128,6 +129,12 @@ fun SettingsScreen(
             icon = Icons.Filled.Storage,
             route = Routes.DATA_MANAGEMENT_SETTINGS,
             contentDescription = dataManagementLabel
+        ),
+        SettingsItem(
+            label = recognitionLabel,
+            icon = Icons.Default.Tune,
+            route = Routes.RECOGNITION_SETTINGS,
+            contentDescription = recognitionLabel
         ),
         SettingsItem(
             label = aboutLabel,
