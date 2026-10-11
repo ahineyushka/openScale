@@ -218,9 +218,11 @@ class CameraScaleScanActivity : ComponentActivity() {
                     runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
                     return@post
                 }
-                val gray = ByteArray(bitmap.width * bitmap.height)
-                val pixels = IntArray(bitmap.width * bitmap.height)
-                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                val width = bitmap.width
+                val height = bitmap.height
+                val gray = ByteArray(width * height)
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
                 for (i in pixels.indices) {
                     val p = pixels[i]
                     gray[i] = ((0.299f * ((p shr 16) and 0xff)) +
@@ -228,7 +230,7 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
                 bitmap.recycle()
-                val digits = ScaleDisplayRecognizer.read(gray, bitmap.width, bitmap.height)
+                val digits = ScaleDisplayRecognizer.read(gray, width, height)
                 runOnUiThread {
                     if (digits == null) {
                         status.text = getString(com.health.openscale.R.string.camera_not_recognized)
@@ -318,17 +320,22 @@ class CameraScaleScanActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::preview.isInitialized) preview.post { openCamera() }
+        if (::preview.isInitialized && !photoMode) preview.post { openCamera() }
     }
 
-    private fun closeCamera() {\n        session?.close(); session = null\n        camera?.close(); camera = null\n        reader?.close(); reader = null\n        cameraOpening = false\n    }\n\n    override fun onPause() {\n        session?.close(); session = null
+    private fun closeCamera() {
+        session?.close(); session = null
         camera?.close(); camera = null
         reader?.close(); reader = null
+        cameraOpening = false
+    }
+
+    override fun onPause() {\n        closeCamera()
         super.onPause()
     }
 
     override fun onDestroy() {
-        session?.close(); camera?.close(); reader?.close()
+        closeCamera()
         cameraThread?.quitSafely()
         cameraThread = null; cameraHandler = null
         super.onDestroy()
