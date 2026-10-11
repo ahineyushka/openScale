@@ -14,9 +14,9 @@ import kotlin.math.min
  */
 internal object ScaleDisplayRecognizer {
     private val digitByMask = mapOf(
-        0b1110111 to '0', 0b0100100 to '1', 0b1011101 to '2',
-        0b1101101 to '3', 0b0101110 to '4', 0b1101011 to '5',
-        0b1111011 to '6', 0b0100101 to '7', 0b1111111 to '8',
+        0b0111111 to '0', 0b0000110 to '1', 0b1011011 to '2',
+        0b1001111 to '3', 0b1100110 to '4', 0b1101101 to '5',
+        0b1111101 to '6', 0b0000111 to '7', 0b1111111 to '8',
         0b1101111 to '9'
     )
 
@@ -68,7 +68,7 @@ internal object ScaleDisplayRecognizer {
                     val mean = sum.toFloat() / count
                     // Support dark-on-light and light-on-dark LCD/LED displays.
                     val on = if (high - threshold > threshold - low) mean < threshold else mean > threshold
-                    if (on) mask = mask or (1 shl (6 - index))
+                    if (on) mask = mask or (1 shl index)
                 }
             }
             result.append(digitByMask[mask] ?: return null)
