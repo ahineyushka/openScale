@@ -42,11 +42,22 @@ internal object ScaleDisplayRecognizer {
         val ch = bottom - top
         if (cw < 45 || ch < 20) return null
         val digitW = cw / 3
-        val pixels = ArrayList<Int>(cw * ch)
-        for (y in top until bottom) for (x in left until right) pixels.add(gray[y * width + x].toInt() and 0xff)
-        pixels.sort()
-        val low = pixels[pixels.size / 10]
-        val high = pixels[pixels.size * 9 / 10]
+        val histogram = IntArray(256)
+        var total = 0
+        for (y in top until bottom) for (x in left until right) {
+            histogram[gray[y * width + x].toInt() and 0xff]++
+            total++
+        }
+        fun percentile(target: Int): Int {
+            var sum = 0
+            for (value in histogram.indices) {
+                sum += histogram[value]
+                if (sum >= target) return value
+            }
+            return 255
+        }
+        val low = percentile(total / 10)
+        val high = percentile(total * 9 / 10)
         if (high - low < 18) return null
         val threshold = (low + high) / 2
         val result = StringBuilder(3)
