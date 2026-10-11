@@ -17,6 +17,7 @@
  */
 package com.health.openscale.ui.navigation
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.Image
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
@@ -84,6 +86,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -103,6 +106,8 @@ import com.health.openscale.core.data.IconResource
 import com.health.openscale.core.data.User
 import com.health.openscale.ui.navigation.Routes.getIconForRoute
 import com.health.openscale.ui.shared.SharedViewModel
+import com.health.openscale.ui.shared.TopBarAction
+import com.health.openscale.ui.screen.camera.CameraScaleScanActivity
 import com.health.openscale.ui.screen.dialog.AssistedWeighingDialog
 import com.health.openscale.ui.screen.dialog.BluetoothUserInteractionDialog
 import com.health.openscale.ui.screen.settings.BluetoothViewModel
@@ -129,6 +134,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun AppNavigation(sharedViewModel: SharedViewModel) {
     val resources = LocalResources.current
+    val context = LocalContext.current
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbarHostState = remember { SnackbarHostState() }
@@ -413,8 +419,15 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
                             }
                         },
                         actions = {
-                            // Display actions defined in SharedViewModel.
-                            topBarActions.forEach { action ->
+                            // Keep the camera scanner separate from Bluetooth scale discovery.
+                            val actionsToShow = if (currentRoute in mainRoutes) {
+                                topBarActions + TopBarAction(
+                                    icon = Icons.Filled.PhotoCamera,
+                                    onClick = { context.startActivity(Intent(context, CameraScaleScanActivity::class.java)) },
+                                    contentDescriptionResId = R.string.camera_scan
+                                )
+                            } else topBarActions
+                            actionsToShow.forEach { action ->
                                 val contentDesc = action.contentDescriptionResId?.let { stringResource(id = it) }
                                     ?: action.contentDescription
                                 IconButton(onClick = action.onClick) {
