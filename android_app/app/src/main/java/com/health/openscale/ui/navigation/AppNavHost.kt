@@ -67,6 +67,7 @@ import com.health.openscale.ui.screen.settings.GeneralSettingsScreen
 import com.health.openscale.ui.screen.settings.MeasurementTypeDetailScreen
 import com.health.openscale.ui.screen.settings.MeasurementTypeSettingsScreen
 import com.health.openscale.ui.screen.settings.SettingsScreen
+import com.health.openscale.ui.screen.settings.RecognitionSettingsScreen
 import com.health.openscale.ui.screen.settings.SettingsViewModel
 import com.health.openscale.ui.screen.settings.UserDetailScreen
 import com.health.openscale.ui.screen.settings.UserSettingsScreen
@@ -310,6 +311,7 @@ private val settingsCategoryRoutes = listOf(
     Routes.CHART_SETTINGS,
     Routes.DATA_MANAGEMENT_SETTINGS,
     Routes.ABOUT_SETTINGS,
+    Routes.RECOGNITION_SETTINGS,
 )
 
 @Composable
@@ -342,6 +344,7 @@ private fun SettingsCategoryScreen(
         )
         Routes.CHART_SETTINGS -> ChartSettingsScreen(sharedViewModel = sharedViewModel)
         Routes.DATA_MANAGEMENT_SETTINGS -> DataManagementSettingsScreen(settingsViewModel = settingsViewModel)
+        Routes.RECOGNITION_SETTINGS -> RecognitionSettingsScreen(sharedViewModel = sharedViewModel)
         Routes.ABOUT_SETTINGS -> AboutScreen(
             navController = navController,
             sharedViewModel = sharedViewModel
