@@ -624,6 +624,17 @@
     <string name="settings_item_chart">Chart</string>
     <string name="settings_item_data_management">Data Management</string>
     <string name="settings_item_about">About</string>
+    <string name="settings_item_recognition">Recognition settings</string>
+    <string name="camera_format_title">Display format</string>
+    <string name="camera_unit_title">Weight unit shown on the scale</string>
+    <string name="camera_scan">Scan weight from display</string>
+    <string name="camera_align_display">Align the scale display in the centre of the preview</string>
+    <string name="camera_recognized">Recognized: %1$s %2$s</string>
+    <string name="camera_confirm">Confirm</string>
+    <string name="camera_retry">Retry</string>
+    <string name="camera_error">Cannot start the camera. Check camera permission and try again.</string>
+    <string name="camera_no_user">Select a user in openScale before saving a measurement.</string>
+    <string name="camera_save_error">Could not save the measurement. Try again.</string>
 
     <!-- General Settings Screen -->
     <string name="settings_general_title">General Settings</string>
