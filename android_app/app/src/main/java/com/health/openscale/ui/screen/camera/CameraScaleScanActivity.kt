@@ -7,6 +7,8 @@ package com.health.openscale.ui.screen.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
@@ -87,7 +89,20 @@ class CameraScaleScanActivity : ComponentActivity() {
             setBackgroundColor(Color.BLACK)
         }
         preview = TextureView(this)
-        root.addView(preview, LinearLayout.LayoutParams(-1, 0, 1f))
+        val previewContainer = FrameLayout(this)
+        previewContainer.addView(preview, FrameLayout.LayoutParams(-1, -1))
+        previewContainer.addView(object : View(this) {
+            private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.GREEN
+                style = Paint.Style.STROKE
+                strokeWidth = 4f
+            }
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                canvas.drawRect(width * .12f, height * .25f, width * .88f, height * .75f, guidePaint)
+            }
+        }, FrameLayout.LayoutParams(-1, -1))
+        root.addView(previewContainer, LinearLayout.LayoutParams(-1, 0, 1f))
         status = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 20f; gravity = Gravity.CENTER
             text = getString(com.health.openscale.R.string.camera_align_display)
