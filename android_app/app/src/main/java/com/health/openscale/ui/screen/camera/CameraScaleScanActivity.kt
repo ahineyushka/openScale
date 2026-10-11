@@ -208,7 +208,8 @@ class CameraScaleScanActivity : ComponentActivity() {
             val i = y * rowStride + x * pixelStride
             if (i < bytes.size) gray[y * width + x] = bytes[i]
         }
-        val digits = ScaleDisplayRecognizer.read(gray, width, height) ?: return
+        val digits = ScaleDisplayRecognizer.read(gray, width, height)
+        if (digits == null) { stableDigits = null; repeatedFrames = 0; return }
         if (digits == stableDigits) repeatedFrames++ else { stableDigits = digits; repeatedFrames = 1 }
         if (repeatedFrames >= 4) {
             val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
