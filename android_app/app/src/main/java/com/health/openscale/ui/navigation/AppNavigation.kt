@@ -43,6 +43,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
@@ -419,16 +420,11 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
                             }
                         },
                         actions = {
-                            // Keep weight recognition beside Bluetooth actions, but not on Settings
-                            // or other destinations whose toolbar does not expose scale actions.
-                            val scaleRelatedRoutes = setOf(
-                                Routes.OVERVIEW,
-                                Routes.GRAPH,
-                                Routes.TABLE,
-                                Routes.STATISTICS,
-                                Routes.INSIGHTS
-                            )
-                            val actionsToShow = if (currentRoute in scaleRelatedRoutes) {
+                            // Show recognition only on screens that actually expose the Bluetooth
+                            // scale action. This avoids leaving a lone scanner icon on Settings or
+                            // other toolbars that do not contain scale-related actions.
+                            val hasBluetoothAction = topBarActions.any { it.icon == Icons.Filled.Bluetooth }
+                            val actionsToShow = if (hasBluetoothAction) {
                                 listOf(
                                     TopBarAction(
                                         icon = Icons.Filled.DocumentScanner,
