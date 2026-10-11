@@ -10,6 +10,8 @@ import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -25,6 +27,7 @@ import android.view.Gravity
 import android.view.Surface
 import android.view.TextureView
 import android.view.View
+import android.net.Uri
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -49,6 +52,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 import javax.inject.Inject
+import androidx.activity.result.contract.ActivityResultContracts
 
 @AndroidEntryPoint
 class CameraScaleScanActivity : ComponentActivity() {
@@ -73,6 +77,10 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var savedUnit = "KG"
     private var stableWeight: Float? = null
     private var saving = false
+    private var photoMode = false
+    private val pickPhoto = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) processSelectedPhoto(uri)
+    }
     @Volatile private var settingsLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -119,9 +127,18 @@ class CameraScaleScanActivity : ComponentActivity() {
         }
         root.addView(status)
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        val choosePhoto = Button(this).apply {
+            text = getString(com.health.openscale.R.string.camera_choose_photo)
+            setOnClickListener {
+                photoMode = true
+                closeCamera()
+                pickPhoto.launch(arrayOf("image/*"))
+            }
+        }
+        row.addView(choosePhoto)
         retry = Button(this).apply {
             text = getString(com.health.openscale.R.string.camera_retry)
-            setOnClickListener { stableDigits = null; stableWeight = null; repeatedFrames = 0; confirm.visibility = View.GONE; status.text = getString(com.health.openscale.R.string.camera_align_display) }
+            setOnClickListener { photoMode = false; stableDigits = null; stableWeight = null; repeatedFrames = 0; confirm.visibility = View.GONE; status.text = getString(com.health.openscale.R.string.camera_align_display); if (preview.isAvailable) openCamera() }
         }
         confirm = Button(this).apply {
             text = getString(com.health.openscale.R.string.camera_confirm)
@@ -193,7 +210,45 @@ class CameraScaleScanActivity : ComponentActivity() {
         }
     }
 
+    private fun processSelectedPhoto(uri: Uri) {
+        cameraHandler?.post {
+            try {
+                val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap == null) {
+                    runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
+                    return@post
+                }
+                val gray = ByteArray(bitmap.width * bitmap.height)
+                val pixels = IntArray(bitmap.width * bitmap.height)
+                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                for (i in pixels.indices) {
+                    val p = pixels[i]
+                    gray[i] = ((0.299f * ((p shr 16) and 0xff)) +
+                        (0.587f * ((p shr 8) and 0xff)) +
+                        (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
+                }
+                bitmap.recycle()
+                val digits = ScaleDisplayRecognizer.read(gray, bitmap.width, bitmap.height)
+                runOnUiThread {
+                    if (digits == null) {
+                        status.text = getString(com.health.openscale.R.string.camera_not_recognized)
+                    } else {
+                        val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
+                        val raw = digits.toFloat() / Math.pow(10.0, decimals.toDouble()).toFloat()
+                        val symbols = DecimalFormatSymbols(Locale.getDefault())
+                        val fmt = DecimalFormat(if (decimals == 0) "0" else "0." + "0".repeat(decimals), symbols)
+                        status.text = getString(com.health.openscale.R.string.camera_recognized, fmt.format(raw), UnitType.valueOf(savedUnit).displayName)
+                    }
+                    confirm.visibility = View.GONE
+                }
+            } catch (_: Exception) {
+                runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
+            }
+        }
+    }
+
     private fun processImage(image: Image) {
+        if (photoMode) return
         if (!settingsLoaded || stableWeight != null || saving) return
         val plane = image.planes[0]
         val buffer = plane.buffer
@@ -266,8 +321,7 @@ class CameraScaleScanActivity : ComponentActivity() {
         if (::preview.isInitialized) preview.post { openCamera() }
     }
 
-    override fun onPause() {
-        session?.close(); session = null
+    private fun closeCamera() {\n        session?.close(); session = null\n        camera?.close(); camera = null\n        reader?.close(); reader = null\n        cameraOpening = false\n    }\n\n    override fun onPause() {\n        session?.close(); session = null
         camera?.close(); camera = null
         reader?.close(); reader = null
         super.onPause()
