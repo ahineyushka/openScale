@@ -27,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
@@ -113,6 +114,12 @@ fun SettingsScreen(
             contentDescription = measurementTypesLabel
         ),
         SettingsItem(
+            label = recognitionLabel,
+            icon = Icons.Filled.DocumentScanner,
+            route = Routes.RECOGNITION_SETTINGS,
+            contentDescription = recognitionLabel
+        ),
+        SettingsItem(
             label = bluetoothLabel,
             icon = Icons.Filled.Bluetooth,
             route = Routes.BLUETOOTH_SETTINGS,
@@ -130,12 +137,7 @@ fun SettingsScreen(
             route = Routes.DATA_MANAGEMENT_SETTINGS,
             contentDescription = dataManagementLabel
         ),
-        SettingsItem(
-            label = recognitionLabel,
-            icon = Icons.Default.Tune,
-            route = Routes.RECOGNITION_SETTINGS,
-            contentDescription = recognitionLabel
-        ),
+
         SettingsItem(
             label = aboutLabel,
             icon = Icons.Default.Info,
