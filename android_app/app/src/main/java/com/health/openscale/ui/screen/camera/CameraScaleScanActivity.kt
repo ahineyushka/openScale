@@ -19,6 +19,8 @@ import android.hardware.camera2.CaptureRequest
 import android.media.Image
 import android.media.ImageReader
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.view.Gravity
 import android.view.Surface
 import android.view.TextureView
@@ -58,6 +60,8 @@ class CameraScaleScanActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var confirm: Button
     private lateinit var retry: Button
+    private var cameraThread: HandlerThread? = null
+    private var cameraHandler: Handler? = null
     private var camera: CameraDevice? = null
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
@@ -72,6 +76,8 @@ class CameraScaleScanActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        cameraThread = HandlerThread("ScaleCameraFrames").apply { start() }
+        cameraHandler = Handler(cameraThread!!.looper)
         buildUi()
         lifecycleScope.launch {
             savedFormat = settings.observeSetting(FORMAT_KEY, "XXX.X").first()
@@ -154,7 +160,7 @@ class CameraScaleScanActivity : ComponentActivity() {
                 it.setOnImageAvailableListener({ source ->
                     val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
                     try { processImage(image) } finally { image.close() }
-                }, null)
+                }, cameraHandler)
             }
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
@@ -170,14 +176,14 @@ class CameraScaleScanActivity : ComponentActivity() {
                                 set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                                 set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
                             }.build()
-                            s.setRepeatingRequest(request, null, null)
+                            s.setRepeatingRequest(request, null, cameraHandler)
                         }
                         override fun onConfigureFailed(s: CameraCaptureSession) { status.text = getString(com.health.openscale.R.string.camera_error) }
-                    }, null)
+                    }, cameraHandler)
                 }
                 override fun onDisconnected(device: CameraDevice) { device.close(); camera = null }
                 override fun onError(device: CameraDevice, error: Int) { device.close(); camera = null; status.text = getString(com.health.openscale.R.string.camera_error) }
-            }, null)
+            }, cameraHandler)
         } catch (_: Exception) {
             status.text = getString(com.health.openscale.R.string.camera_error)
         }
@@ -250,8 +256,24 @@ class CameraScaleScanActivity : ComponentActivity() {
         }
     }
 
-    override fun onPause() { session?.close(); session = null; camera?.close(); camera = null; reader?.close(); reader = null; super.onPause() }
-    override fun onDestroy() { session?.close(); camera?.close(); reader?.close(); super.onDestroy() }
+    override fun onResume() {
+        super.onResume()
+        if (::preview.isInitialized) preview.post { openCamera() }
+    }
+
+    override fun onPause() {
+        session?.close(); session = null
+        camera?.close(); camera = null
+        reader?.close(); reader = null
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        session?.close(); camera?.close(); reader?.close()
+        cameraThread?.quitSafely()
+        cameraThread = null; cameraHandler = null
+        super.onDestroy()
+    }
 
     companion object {
         const val FORMAT_KEY = "camera_scale_display_format"
