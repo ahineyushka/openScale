@@ -330,7 +330,8 @@ class CameraScaleScanActivity : ComponentActivity() {
         cameraOpening = false
     }
 
-    override fun onPause() {\n        closeCamera()
+    override fun onPause() {
+        closeCamera()
         super.onPause()
     }
 
