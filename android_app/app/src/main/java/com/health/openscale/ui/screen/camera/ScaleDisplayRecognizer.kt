@@ -67,7 +67,7 @@ internal object ScaleDisplayRecognizer {
                 if (count > 0) {
                     val mean = sum.toFloat() / count
                     // Support dark-on-light and light-on-dark LCD/LED displays.
-                    val on = if (high - threshold > threshold - low) mean < threshold else mean > threshold
+                    val on = mean < threshold
                     if (on) mask = mask or (1 shl index)
                 }
             }
