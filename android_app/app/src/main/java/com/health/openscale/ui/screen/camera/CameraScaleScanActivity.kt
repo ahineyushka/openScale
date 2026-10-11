@@ -68,6 +68,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var savedUnit = "KG"
     private var stableWeight: Float? = null
     private var saving = false
+    @Volatile private var settingsLoaded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,6 +76,7 @@ class CameraScaleScanActivity : ComponentActivity() {
         lifecycleScope.launch {
             savedFormat = settings.observeSetting(FORMAT_KEY, "XXX.X").first()
             savedUnit = settings.observeSetting(UNIT_KEY, "KG").first()
+            settingsLoaded = true
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             preview.post { openCamera() }
@@ -182,7 +184,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     }
 
     private fun processImage(image: Image) {
-        if (stableWeight != null || saving) return
+        if (!settingsLoaded || stableWeight != null || saving) return
         val plane = image.planes[0]
         val buffer = plane.buffer
         val bytes = ByteArray(buffer.remaining())
