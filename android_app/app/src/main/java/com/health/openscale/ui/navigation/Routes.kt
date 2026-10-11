@@ -53,6 +53,7 @@ object Routes {
     const val CHART_SETTINGS = "settings/chart"
     const val DATA_MANAGEMENT_SETTINGS = "settings/dataManagement"
     const val ABOUT_SETTINGS = "settings/about"
+    const val RECOGNITION_SETTINGS = "settings/recognition"
     const val TABLE_DRILLDOWN = "table_drilldown?start={start}&end={end}"
     const val MEASUREMENT_COMPARISON = "measurement_comparison?start={start}&end={end}&level={level}"
     const val OVERVIEW_DRILLDOWN = "overview_drilldown?start={start}&end={end}"
