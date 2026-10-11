@@ -63,6 +63,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
     private var camera: CameraDevice? = null
+    private var cameraOpening = false
     private var session: CameraCaptureSession? = null
     private var reader: ImageReader? = null
     private var stableDigits: String? = null
@@ -85,7 +86,7 @@ class CameraScaleScanActivity : ComponentActivity() {
             settingsLoaded = true
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            preview.post { openCamera() }
+            // The TextureView listener opens the camera when its surface is ready.
         } else {
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 41)
         }
@@ -145,7 +146,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     }
 
     private fun openCamera() {
-        if (isFinishing || camera != null || !preview.isAvailable) return
+        if (isFinishing || camera != null || cameraOpening || !preview.isAvailable) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
         try {
             val manager = getSystemService(CameraManager::class.java)
@@ -162,8 +163,10 @@ class CameraScaleScanActivity : ComponentActivity() {
                     try { processImage(image) } finally { image.close() }
                 }, cameraHandler)
             }
+            cameraOpening = true
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(device: CameraDevice) {
+                    cameraOpening = false
                     camera = device
                     val texture = preview.surfaceTexture ?: return
                     texture.setDefaultBufferSize(size.width, size.height)
@@ -178,13 +181,14 @@ class CameraScaleScanActivity : ComponentActivity() {
                             }.build()
                             s.setRepeatingRequest(request, null, cameraHandler)
                         }
-                        override fun onConfigureFailed(s: CameraCaptureSession) { status.text = getString(com.health.openscale.R.string.camera_error) }
+                        override fun onConfigureFailed(s: CameraCaptureSession) { runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_error) } }
                     }, cameraHandler)
                 }
-                override fun onDisconnected(device: CameraDevice) { device.close(); camera = null }
-                override fun onError(device: CameraDevice, error: Int) { device.close(); camera = null; status.text = getString(com.health.openscale.R.string.camera_error) }
+                override fun onDisconnected(device: CameraDevice) { cameraOpening = false; device.close(); camera = null }
+                override fun onError(device: CameraDevice, error: Int) { cameraOpening = false; device.close(); camera = null; runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_error) } }
             }, cameraHandler)
         } catch (_: Exception) {
+            cameraOpening = false
             status.text = getString(com.health.openscale.R.string.camera_error)
         }
     }
