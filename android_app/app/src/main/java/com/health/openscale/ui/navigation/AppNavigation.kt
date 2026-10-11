@@ -46,7 +46,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
@@ -419,13 +419,23 @@ fun AppNavigation(sharedViewModel: SharedViewModel) {
                             }
                         },
                         actions = {
-                            // Keep the camera scanner separate from Bluetooth scale discovery.
-                            val actionsToShow = if (currentRoute in mainRoutes) {
-                                topBarActions + TopBarAction(
-                                    icon = Icons.Filled.PhotoCamera,
-                                    onClick = { context.startActivity(Intent(context, CameraScaleScanActivity::class.java)) },
-                                    contentDescriptionResId = R.string.camera_scan
-                                )
+                            // Keep weight recognition beside Bluetooth actions, but not on Settings
+                            // or other destinations whose toolbar does not expose scale actions.
+                            val scaleRelatedRoutes = setOf(
+                                Routes.OVERVIEW,
+                                Routes.GRAPH,
+                                Routes.TABLE,
+                                Routes.STATISTICS,
+                                Routes.INSIGHTS
+                            )
+                            val actionsToShow = if (currentRoute in scaleRelatedRoutes) {
+                                listOf(
+                                    TopBarAction(
+                                        icon = Icons.Filled.DocumentScanner,
+                                        onClick = { context.startActivity(Intent(context, CameraScaleScanActivity::class.java)) },
+                                        contentDescriptionResId = R.string.camera_scan
+                                    )
+                                ) + topBarActions
                             } else topBarActions
                             actionsToShow.forEach { action ->
                                 val contentDesc = action.contentDescriptionResId?.let { stringResource(id = it) }
