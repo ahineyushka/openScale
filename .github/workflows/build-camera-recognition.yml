@@ -29,6 +29,11 @@ jobs:
       - name: Test camera digit candidate detector
         run: ./gradlew :app:testDebugUnitTest --tests "com.health.openscale.ui.screen.camera.ScaleDisplayRecognizerTest" --no-daemon --stacktrace
 
+      - name: Print unit test reports on failure
+        if: failure()
+        run: |
+          find app/build/test-results/testDebugUnitTest -maxdepth 1 -name '*.xml' -type f -print -exec cat {} \\\;
+
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@v4
