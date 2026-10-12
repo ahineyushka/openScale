@@ -24,6 +24,41 @@ class ScaleDisplayRecognizerTest {
     }
 
     @Test
+    fun findsAllTenDigitsOnBothDisplayPolarities() {
+        assertFindsAllDigits(background = 12, segment = 240)
+        assertFindsAllDigits(background = 240, segment = 15)
+    }
+
+    private fun assertFindsAllDigits(background: Int, segment: Int) {
+        val width = 500
+        val height = 100
+        val gray = ByteArray(width * height) { background.toByte() }
+        val digitWidth = 30
+        val digitHeight = 62
+        val y = 18
+        val digitPositions = (0..9).associate { digit ->
+            val x = 18 + digit * 48
+            drawDigit(gray, width, x, y, digitWidth, digitHeight, ('0'.code + digit).toChar(), segment)
+            ('0'.code + digit).toChar() to (x to y)
+        }
+
+        val candidates = ScaleDisplayRecognizer.findDigitCandidates(gray, width, height)
+        for ((digit, position) in digitPositions) {
+            assertTrue(
+                "Missing digit $digit for polarity background=$background, segment=$segment. " +
+                    "Candidates=" + candidates
+                        .filter { abs((it.left + it.right) / 2 - (position.first + digitWidth / 2)) < 24 }
+                        .joinToString { "\${it.digit}@\${it.left},\${it.top},\${it.width}x\${it.height}:\${it.confidence}" },
+                candidates.any {
+                    it.digit == digit &&
+                        abs((it.left + it.right) / 2 - (position.first + digitWidth / 2)) <= 9 &&
+                        abs((it.top + it.bottom) / 2 - (position.second + digitHeight / 2)) <= 9
+                }
+            )
+        }
+    }
+
+    @Test
     fun blankImageDoesNotProduceDigitCandidates() {
         val width = 180
         val height = 100

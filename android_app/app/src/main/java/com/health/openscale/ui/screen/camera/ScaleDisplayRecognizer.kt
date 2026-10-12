@@ -567,16 +567,19 @@ internal object ScaleDisplayRecognizer {
         val candidates = ArrayList<DigitBox>()
         val segmentMeans = FloatArray(13)
         val digitOut = CharArray(1)
-        val ratios = floatArrayOf(.32f, .37f, .42f, .47f, .52f)
+        // Explore the common seven-segment digit proportions and nearby widths. A coarse
+        // vertical step misses horizontal bars when the candidate cell is shifted by only
+        // a few pixels, which made digits 2/3/4 look like a narrow "1".
+        val ratios = floatArrayOf(.30f, .34f, .38f, .42f, .46f, .50f, .54f)
         val minHeight = max(9, min(width, height) / 50)
         val maxHeight = min((height * .72f).toInt(), (width * .65f).toInt()).coerceAtLeast(minHeight)
         var digitHeight = minHeight
 
         while (digitHeight <= maxHeight) {
-            // Coarse scanning plus score-based suppression keeps the whole-frame search
-            // tractable for live camera frames without assuming a fixed display location.
-            val stepX = max(2, digitHeight / 4)
-            val stepY = max(2, digitHeight / 4)
+            // Search more densely than the first prototype. Template matching later rejects
+            // false candidates, so candidate discovery should favor recall over precision.
+            val stepX = max(2, digitHeight / 6)
+            val stepY = max(1, digitHeight / 10)
             for (ratio in ratios) {
                 val digitWidth = max(8, (digitHeight * ratio).roundToInt())
                 if (digitWidth > width || digitHeight > height) continue
@@ -588,7 +591,7 @@ internal object ScaleDisplayRecognizer {
                             integral, width, height, x, y, digitWidth, digitHeight,
                             segmentMeans, digitOut
                         )
-                        if (confidence >= .38f) {
+                        if (confidence >= .24f) {
                             candidates.add(
                                 DigitBox(
                                     digitOut[0], x, y, x + digitWidth, y + digitHeight, confidence
@@ -600,14 +603,14 @@ internal object ScaleDisplayRecognizer {
                     y += stepY
                 }
             }
-            digitHeight = max(digitHeight + 2, (digitHeight * 1.16f).roundToInt())
-            if (candidates.size > 3500) {
-                val pruned = suppressCandidates(candidates, 700)
+            digitHeight = max(digitHeight + 2, (digitHeight * 1.10f).roundToInt())
+            if (candidates.size > 6000) {
+                val pruned = suppressCandidates(candidates, 1200)
                 candidates.clear()
                 candidates.addAll(pruned)
             }
         }
-        return suppressCandidates(candidates, 360)
+        return suppressCandidates(candidates, 900)
     }
 
     private fun scoreCandidate(
