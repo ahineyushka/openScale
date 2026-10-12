@@ -64,6 +64,7 @@ class CameraScaleScanActivity : ComponentActivity() {
 
     private lateinit var preview: TextureView
     private lateinit var photoPreview: ImageView
+    private lateinit var detectionOverlay: View
     private lateinit var status: TextView
     private lateinit var confirm: Button
     private lateinit var retry: Button
@@ -77,9 +78,13 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var stableDigits: String? = null
     private var repeatedFrames = 0
     private var stableAt = 0L
-    private var savedFormat = "XXX.X"
+    private var savedFormat = "XXX.XX"
     private var savedUnit = "KG"
     private var stableWeight: Float? = null
+    private var frameCounter = 0
+    private var liveDetection: ScaleDisplayRecognizer.Detection? = null
+    private var liveInputWidth = 1
+    private var liveInputHeight = 1
     private var saving = false
     private var selectedPhoto: Bitmap? = null
     @Volatile private var photoMode = false
@@ -88,6 +93,8 @@ class CameraScaleScanActivity : ComponentActivity() {
             processSelectedPhoto(uri)
         } else {
             photoMode = false
+            liveDetection = null
+            detectionOverlay.visibility = View.VISIBLE
             photoPreview.setImageDrawable(null)
             photoPreview.visibility = View.GONE
             preview.visibility = View.VISIBLE
@@ -103,7 +110,7 @@ class CameraScaleScanActivity : ComponentActivity() {
         cameraHandler = Handler(cameraThread!!.looper)
         buildUi()
         lifecycleScope.launch {
-            savedFormat = settings.observeSetting(FORMAT_KEY, "XXX.X").first()
+            savedFormat = settings.observeSetting(FORMAT_KEY, "XXX.XX").first()
             savedUnit = settings.observeSetting(UNIT_KEY, "KG").first()
             settingsLoaded = true
         }
@@ -122,17 +129,28 @@ class CameraScaleScanActivity : ComponentActivity() {
         preview = TextureView(this)
         val previewContainer = FrameLayout(this)
         previewContainer.addView(preview, FrameLayout.LayoutParams(-1, -1))
-        previewContainer.addView(object : View(this) {
-            private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        detectionOverlay = object : View(this) {
+            private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.GREEN
                 style = Paint.Style.STROKE
                 strokeWidth = 4f
             }
+            private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.GREEN
+                style = Paint.Style.FILL
+            }
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
-                canvas.drawRect(width * .12f, height * .25f, width * .88f, height * .75f, guidePaint)
+                val detection = liveDetection ?: return
+                val sx = width.toFloat() / liveInputWidth.coerceAtLeast(1)
+                val sy = height.toFloat() / liveInputHeight.coerceAtLeast(1)
+                for (box in detection.boxes) {
+                    canvas.drawRect(box.left * sx, box.top * sy, box.right * sx, box.bottom * sy, boxPaint)
+                }
+                canvas.drawCircle(detection.decimalX * sx, detection.decimalY * sy, 5f, dotPaint)
             }
-        }, FrameLayout.LayoutParams(-1, -1))
+        }
+        previewContainer.addView(detectionOverlay, FrameLayout.LayoutParams(-1, -1))
         photoPreview = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             setBackgroundColor(Color.BLACK)
@@ -152,6 +170,8 @@ class CameraScaleScanActivity : ComponentActivity() {
             text = getString(com.health.openscale.R.string.camera_choose_photo)
             setOnClickListener {
                 photoMode = true
+                liveDetection = null
+                detectionOverlay.visibility = View.GONE
                 stableDigits = null
                 stableWeight = null
                 repeatedFrames = 0
@@ -180,6 +200,8 @@ class CameraScaleScanActivity : ComponentActivity() {
             text = getString(com.health.openscale.R.string.camera_retry)
             setOnClickListener {
                 photoMode = false
+                liveDetection = null
+                detectionOverlay.visibility = View.VISIBLE
                 stableDigits = null
                 stableWeight = null
                 repeatedFrames = 0
@@ -294,19 +316,11 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val detection = ScaleDisplayRecognizer.find(gray, width, height)
-                val digits = detection?.digits
+                val detection = ScaleDisplayRecognizer.find(gray, width, height, savedFormat)
                 runOnUiThread {
-                    photoPreview.setImageBitmap(detection?.let { drawDetectionBox(bitmap, it) } ?: bitmap)
-                    if (digits == null) {
-                        status.text = getString(com.health.openscale.R.string.camera_not_recognized)
-                    } else {
-                        val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
-                        val raw = digits.toFloat() / Math.pow(10.0, decimals.toDouble()).toFloat()
-                        val symbols = DecimalFormatSymbols(Locale.getDefault())
-                        val fmt = DecimalFormat(if (decimals == 0) "0" else "0." + "0".repeat(decimals), symbols)
-                        status.text = getString(com.health.openscale.R.string.camera_recognized, fmt.format(raw), UnitType.valueOf(savedUnit).displayName)
-                    }
+                    photoPreview.setImageBitmap(detection?.let { drawDetectionBoxes(bitmap, it) } ?: bitmap)
+                    status.text = detection?.let { recognizedStatus(it.value) }
+                        ?: getString(com.health.openscale.R.string.camera_not_recognized)
                     confirm.visibility = View.GONE
                 }
             } catch (_: Exception) {
@@ -315,7 +329,7 @@ class CameraScaleScanActivity : ComponentActivity() {
         }
     }
 
-    private fun drawDetectionBox(bitmap: Bitmap, detection: ScaleDisplayRecognizer.Detection): Bitmap {
+    private fun drawDetectionBoxes(bitmap: Bitmap, detection: ScaleDisplayRecognizer.Detection): Bitmap {
         val marked = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(marked)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -323,11 +337,33 @@ class CameraScaleScanActivity : ComponentActivity() {
             style = Paint.Style.STROKE
             strokeWidth = maxOf(3f, bitmap.width / 250f)
         }
-        canvas.drawRect(
-            detection.left.toFloat(), detection.top.toFloat(),
-            detection.right.toFloat(), detection.bottom.toFloat(), paint
+        for (box in detection.boxes) {
+            canvas.drawRect(
+                box.left.toFloat(), box.top.toFloat(),
+                box.right.toFloat(), box.bottom.toFloat(), paint
+            )
+        }
+        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.GREEN
+            style = Paint.Style.FILL
+        }
+        canvas.drawCircle(
+            detection.decimalX.toFloat(), detection.decimalY.toFloat(),
+            maxOf(3f, bitmap.width / 400f), dotPaint
         )
         return marked
+    }
+
+    private fun recognizedStatus(value: Double): String {
+        val decimals = ScaleDisplayRecognizer.decimalPlaces(savedFormat)
+        val symbols = DecimalFormatSymbols(Locale.getDefault())
+        val pattern = if (decimals == 0) "0" else "0." + "0".repeat(decimals)
+        val fmt = DecimalFormat(pattern, symbols)
+        return getString(
+            com.health.openscale.R.string.camera_recognized,
+            fmt.format(value),
+            UnitType.valueOf(savedUnit).displayName
+        )
     }
 
     private fun processSelectedPhoto(uri: Uri) {
@@ -356,24 +392,16 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val detection = ScaleDisplayRecognizer.find(gray, width, height)
-                val digits = detection?.digits
+                val detection = ScaleDisplayRecognizer.find(gray, width, height, savedFormat)
                 runOnUiThread {
-                    // Keep the original bitmap for rotation; show a copy with the detected region outlined.
+                    // Keep the original bitmap for rotation; highlight only characters selected by the template.
                     selectedPhoto = bitmap
                     rotatePhoto.visibility = View.VISIBLE
-                    photoPreview.setImageBitmap(detection?.let { drawDetectionBox(bitmap, it) } ?: bitmap)
+                    photoPreview.setImageBitmap(detection?.let { drawDetectionBoxes(bitmap, it) } ?: bitmap)
                     photoPreview.visibility = View.VISIBLE
                     preview.visibility = View.GONE
-                    if (digits == null) {
-                        status.text = getString(com.health.openscale.R.string.camera_not_recognized)
-                    } else {
-                        val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
-                        val raw = digits.toFloat() / Math.pow(10.0, decimals.toDouble()).toFloat()
-                        val symbols = DecimalFormatSymbols(Locale.getDefault())
-                        val fmt = DecimalFormat(if (decimals == 0) "0" else "0." + "0".repeat(decimals), symbols)
-                        status.text = getString(com.health.openscale.R.string.camera_recognized, fmt.format(raw), UnitType.valueOf(savedUnit).displayName)
-                    }
+                    status.text = detection?.let { recognizedStatus(it.value) }
+                        ?: getString(com.health.openscale.R.string.camera_not_recognized)
                     confirm.visibility = View.GONE
                 }
             } catch (_: Exception) {
@@ -383,7 +411,8 @@ class CameraScaleScanActivity : ComponentActivity() {
     }
 
     private fun processImage(image: Image) {
-        if (photoMode) return
+        frameCounter++
+        if (photoMode || frameCounter % 4 != 0) return
         if (!settingsLoaded || stableWeight != null || saving) return
         val plane = image.planes[0]
         val buffer = plane.buffer
@@ -398,20 +427,23 @@ class CameraScaleScanActivity : ComponentActivity() {
             val i = y * rowStride + x * pixelStride
             if (i < bytes.size) gray[y * width + x] = bytes[i]
         }
-        val digits = ScaleDisplayRecognizer.read(gray, width, height)
+        val detection = ScaleDisplayRecognizer.find(gray, width, height, savedFormat, maxSide = 300)
         // The frame may have started processing just before the user chose a photo.
         if (photoMode) return
-        if (digits == null) { stableDigits = null; repeatedFrames = 0; return }
+        runOnUiThread {
+            liveDetection = detection
+            liveInputWidth = width
+            liveInputHeight = height
+            detectionOverlay.invalidate()
+        }
+        if (detection == null) { stableDigits = null; repeatedFrames = 0; return }
+        val digits = detection.digits
         if (digits == stableDigits) repeatedFrames++ else { stableDigits = digits; repeatedFrames = 1 }
         if (repeatedFrames >= 4) {
-            val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
-            val raw = digits.toFloat() / Math.pow(10.0, decimals.toDouble()).toFloat()
-            stableWeight = raw
+            stableWeight = detection.value.toFloat()
             stableAt = System.currentTimeMillis()
             runOnUiThread {
-                val symbols = DecimalFormatSymbols(Locale.getDefault())
-                val fmt = DecimalFormat(if (decimals == 0) "0" else "0." + "0".repeat(decimals), symbols)
-                status.text = getString(com.health.openscale.R.string.camera_recognized, fmt.format(raw), UnitType.valueOf(savedUnit).displayName)
+                status.text = recognizedStatus(detection.value)
                 confirm.visibility = View.VISIBLE
             }
         }

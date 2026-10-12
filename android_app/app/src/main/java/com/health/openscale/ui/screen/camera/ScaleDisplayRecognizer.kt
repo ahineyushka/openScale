@@ -5,158 +5,470 @@
  */
 package com.health.openscale.ui.screen.camera
 
+import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /**
- * Lightweight first-pass reader for a tightly framed, three-digit seven-segment display.
- * It intentionally ignores the decimal point and unit indicator.
+ * Lightweight seven-segment detector and classifier.
+ *
+ * It searches for individual character cells at several sizes across the whole image.
+ * Each candidate is scored against seven-segment masks using local foreground/background
+ * contrast, trying both light-on-dark and dark-on-light displays. Candidate cells are then
+ * grouped by height and baseline. The user-selected format decides which size groups are
+ * significant; the detector does not try to identify temperature or other display labels.
+ *
+ * This is a heuristic prototype. It deliberately rejects weak/incomplete matches instead of
+ * inventing a reading, and still needs validation against a broad set of real scale photos.
  */
 internal object ScaleDisplayRecognizer {
-    private val digitByMask = mapOf(
-        0b0111111 to '0', 0b0000110 to '1', 0b1011011 to '2',
-        0b1001111 to '3', 0b1100110 to '4', 0b1101101 to '5',
-        0b1111101 to '6', 0b0000111 to '7', 0b1111111 to '8',
-        0b1101111 to '9'
+    private val digitMasks = intArrayOf(
+        0b0111111, // 0
+        0b0000110, // 1
+        0b1011011, // 2
+        0b1001111, // 3
+        0b1100110, // 4
+        0b1101101, // 5
+        0b1111101, // 6
+        0b0000111, // 7
+        0b1111111, // 8
+        0b1101111  // 9
+    )
+    private val digitChars = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+
+    // A, B, C, D, E, F, G sample regions inside a candidate digit cell.
+    private val segmentZones = arrayOf(
+        floatArrayOf(.22f, .07f, .78f, .20f),
+        floatArrayOf(.66f, .18f, .83f, .42f),
+        floatArrayOf(.66f, .58f, .83f, .82f),
+        floatArrayOf(.22f, .80f, .78f, .93f),
+        floatArrayOf(.17f, .58f, .34f, .82f),
+        floatArrayOf(.17f, .18f, .34f, .42f),
+        floatArrayOf(.22f, .44f, .78f, .56f)
     )
 
-    // Segment sample rectangles in normalized digit coordinates: A, B, C, D, E, F, G.
-    private val zones = listOf(
-        floatArrayOf(.25f,.08f,.75f,.20f),
-        floatArrayOf(.68f,.14f,.84f,.43f),
-        floatArrayOf(.68f,.57f,.84f,.86f),
-        floatArrayOf(.25f,.80f,.75f,.92f),
-        floatArrayOf(.16f,.57f,.32f,.86f),
-        floatArrayOf(.16f,.14f,.32f,.43f),
-        floatArrayOf(.25f,.44f,.75f,.56f)
+    // These corner samples estimate the unlit background inside the same character cell.
+    private val backgroundZones = arrayOf(
+        floatArrayOf(.02f, .02f, .18f, .13f),
+        floatArrayOf(.82f, .02f, .98f, .13f),
+        floatArrayOf(.02f, .87f, .18f, .98f),
+        floatArrayOf(.82f, .87f, .98f, .98f)
     )
 
+    data class DigitBox(
+        val digit: Char,
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+        val confidence: Float
+    ) {
+        val width: Int get() = right - left
+        val height: Int get() = bottom - top
+    }
 
-    data class Detection(val digits: String, val left: Int, val top: Int, val right: Int, val bottom: Int, val score: Int)
+    data class Detection(
+        val digits: String,
+        val value: Double,
+        val boxes: List<DigitBox>,
+        val decimalX: Int,
+        val decimalY: Int,
+        val confidence: Float
+    )
+
+    private data class DigitRow(
+        val boxes: List<DigitBox>,
+        val height: Float,
+        val confidence: Float,
+        val score: Float
+    )
 
     /**
-     * Searches the complete image for a likely three-digit display instead of assuming
-     * that the display is centered. Returns the best candidate window that decodes.
+     * Returns the number of decimal digits in an X/x format template.
+     * Uppercase X and lowercase x are both numeric positions.
      */
-    fun find(gray: ByteArray, width: Int, height: Int): Detection? {
-        if (width < 80 || height < 60 || gray.size < width * height) return null
-        // Search at <=320px on the longest side to keep the sliding-window scan lightweight.
-        val scale = maxOf(width, height).toFloat() / 320f
-        if (scale > 1f) {
-            val sw = (width / scale).toInt().coerceAtLeast(1)
-            val sh = (height / scale).toInt().coerceAtLeast(1)
-            val small = ByteArray(sw * sh)
-            for (y in 0 until sh) for (x in 0 until sw) {
-                small[y * sw + x] = gray[(y * scale).toInt() * width + (x * scale).toInt()]
-            }
-            val found = find(small, sw, sh) ?: return null
-            return Detection(found.digits, (found.left * scale).toInt(), (found.top * scale).toInt(),
-                (found.right * scale).toInt(), (found.bottom * scale).toInt(), found.score)
-        }
-        var best: Detection? = null
-        // Candidate windows are sized around the expected proportions of three digits.
-        // Coarse-to-fine scanning keeps this lightweight without OpenCV/ML.
-        val minH = max(40, height / 7)
-        val maxH = min(height, width)
-        var candidateH = minH
-        while (candidateH <= maxH) {
-            val candidateW = min(width, candidateH)
-            if (candidateW >= 60) {
-                val stepX = max(8, candidateW / 8)
-                val stepY = max(8, candidateH / 8)
-                var top = 0
-                while (top + candidateH <= height) {
-                    var left = 0
-                    while (left + candidateW <= width) {
-                        val crop = ByteArray(candidateW * candidateH)
-                        var idx = 0
-                        var sum = 0L
-                        var sumSq = 0L
-                        for (y in top until top + candidateH) {
-                            val start = y * width + left
-                            for (x in 0 until candidateW) {
-                                val v = gray[start + x].toInt() and 0xff
-                                crop[idx++] = gray[start + x]
-                                sum += v
-                                sumSq += v.toLong() * v
-                            }
-                        }
-                        val mean = sum.toDouble() / crop.size
-                        val variance = sumSq.toDouble() / crop.size - mean * mean
-                        if (variance > 120.0) {
-                            val digits = read(crop, candidateW, candidateH)
-                            if (digits != null) {
-                                // Prefer candidates with stronger contrast, while avoiding
-                                // windows that are almost uniformly black or white.
-                                val score = min(1000, variance.toInt())
-                                if (best == null || score > best.score) {
-                                    best = Detection(digits, left, top, left + candidateW, top + candidateH, score)
-                                }
-                            }
-                        }
-                        left += stepX
+    fun decimalPlaces(format: String): Int =
+        format.substringAfter('.', "").count { it == 'X' || it == 'x' }
+
+    /**
+     * Finds characters and applies the user-selected template.
+     *
+     * maxSide limits work for live camera frames. Larger photos can use a larger value
+     * to preserve details of small digits.
+     */
+    fun find(
+        gray: ByteArray,
+        width: Int,
+        height: Int,
+        format: String,
+        maxSide: Int = 420
+    ): Detection? {
+        if (width < 40 || height < 40 || gray.size < width * height) return null
+        val longestSide = max(width, height)
+        val resize = longestSide.toFloat() / maxSide.coerceAtLeast(160)
+        val smallWidth = if (resize > 1f) (width / resize).roundToInt().coerceAtLeast(1) else width
+        val smallHeight = if (resize > 1f) (height / resize).roundToInt().coerceAtLeast(1) else height
+        val smallGray = if (smallWidth == width && smallHeight == height) {
+            gray.copyOf(width * height)
+        } else {
+            ByteArray(smallWidth * smallHeight).also { out ->
+                for (y in 0 until smallHeight) {
+                    val sourceY = (y.toFloat() * height / smallHeight).toInt().coerceAtMost(height - 1)
+                    for (x in 0 until smallWidth) {
+                        val sourceX = (x.toFloat() * width / smallWidth).toInt().coerceAtMost(width - 1)
+                        out[y * smallWidth + x] = gray[sourceY * width + sourceX]
                     }
-                    top += stepY
                 }
             }
-            candidateH = (candidateH * 1.22f).toInt().coerceAtLeast(candidateH + 1)
         }
+        val integral = buildIntegral(smallGray, smallWidth, smallHeight)
+        val candidates = findCandidates(integral, smallWidth, smallHeight)
+        if (candidates.isEmpty()) return null
+        val rows = findRows(candidates)
+        if (rows.isEmpty()) return null
+        val chosen = chooseReading(rows, candidates, format) ?: return null
+
+        val scaleX = width.toFloat() / smallWidth
+        val scaleY = height.toFloat() / smallHeight
+        val scaledBoxes = chosen.boxes.map { box ->
+            DigitBox(
+                box.digit,
+                (box.left * scaleX).roundToInt().coerceIn(0, width - 1),
+                (box.top * scaleY).roundToInt().coerceIn(0, height - 1),
+                (box.right * scaleX).roundToInt().coerceIn(1, width),
+                (box.bottom * scaleY).roundToInt().coerceIn(1, height),
+                box.confidence
+            )
+        }
+        return Detection(
+            chosen.digits,
+            chosen.value,
+            scaledBoxes,
+            (chosen.decimalX * scaleX).roundToInt().coerceIn(0, width - 1),
+            (chosen.decimalY * scaleY).roundToInt().coerceIn(0, height - 1),
+            chosen.confidence
+        )
+    }
+
+    private data class ChosenReading(
+        val digits: String,
+        val value: Double,
+        val boxes: List<DigitBox>,
+        val decimalX: Int,
+        val decimalY: Int,
+        val confidence: Float
+    )
+
+    private fun chooseReading(
+        rows: List<DigitRow>,
+        candidates: List<DigitBox>,
+        format: String
+    ): ChosenReading? {
+        val upperSlots = format.count { it == 'X' }
+        val smallSlots = format.count { it == 'x' }
+        val decimals = decimalPlaces(format)
+        if (upperSlots == 0 && smallSlots == 0) return null
+
+        val primary = rows.maxByOrNull { it.score } ?: return null
+        var mainBoxes = primary.boxes.sortedBy { it.left }
+        var smallBoxes = emptyList<DigitBox>()
+
+        if (smallSlots > 0) {
+            val hasLargerRow = rows.any { it.height > primary.height * 1.25f }
+            if (!hasLargerRow) {
+                // When all visible digits are reduced-size, the configured template says
+                // that those positions are meaningful (for example a weight below 1 kg).
+                if (mainBoxes.size < smallSlots) return null
+                smallBoxes = mainBoxes.takeLast(smallSlots)
+                mainBoxes = emptyList()
+            } else {
+                if (mainBoxes.size > upperSlots) return null
+                val rightEdge = mainBoxes.lastOrNull()?.right ?: return null
+                val baseline = mainBoxes.map { it.bottom }.average().toFloat()
+                val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
+                val smallCandidates = candidates.filter { box ->
+                    val ratio = box.height / referenceHeight
+                    ratio in .28f.. .82f &&
+                        box.left >= rightEdge - referenceHeight * .18f &&
+                        box.left - rightEdge <= referenceHeight * .85f &&
+                        abs(box.bottom - baseline) <= referenceHeight * .35f
+                }
+                val smallRows = findRows(smallCandidates)
+                    .filter { row ->
+                        row.boxes.size >= smallSlots &&
+                            row.height in (referenceHeight * .28f)..(referenceHeight * .82f) &&
+                            row.boxes.first().left - rightEdge <= referenceHeight * .85f
+                    }
+                    .sortedBy { row ->
+                        val gap = max(0, row.boxes.first().left - rightEdge)
+                        val sizePenalty = abs(row.height / referenceHeight - .55f)
+                        gap.toFloat() / referenceHeight + sizePenalty * .35f - row.confidence * .15f
+                    }
+                val smallRow = smallRows.firstOrNull() ?: return null
+                smallBoxes = smallRow.boxes.sortedBy { it.left }.take(smallSlots)
+            }
+        } else if (mainBoxes.size > upperSlots) {
+            // A template that expects fewer full-size positions must not silently crop
+            // a longer row and save a potentially incorrect number.
+            return null
+        }
+
+        if (mainBoxes.size > upperSlots || smallBoxes.size < smallSlots) return null
+        val selected = (mainBoxes + smallBoxes).distinctBy {
+            ((it.left + it.right) / 2) / 3 to ((it.top + it.bottom) / 2) / 3
+        }.sortedBy { it.left }
+        if (selected.isEmpty() || selected.size < decimals) return null
+
+        val digitString = selected.joinToString("") { it.digit.toString() }
+        val integerValue = digitString.toLongOrNull() ?: return null
+        var divisor = 1.0
+        repeat(decimals) { divisor *= 10.0 }
+        val value = integerValue.toDouble() / divisor
+        val boundaryIndex = selected.size - decimals
+        val decimalX = if (boundaryIndex > 0) {
+            (selected[boundaryIndex - 1].right + selected[boundaryIndex].left) / 2
+        } else {
+            (selected.first().left - max(2, selected.first().width / 5)).coerceAtLeast(0)
+        }
+        val largeBoxes = if (mainBoxes.isNotEmpty()) mainBoxes else selected
+        val baseline = largeBoxes.map { it.bottom }.average().toInt()
+        val averageHeight = largeBoxes.map { it.height }.average().toInt().coerceAtLeast(1)
+        val decimalY = (baseline - max(1, averageHeight / 12)).coerceAtLeast(0)
+        return ChosenReading(
+            digitString,
+            value,
+            selected,
+            decimalX,
+            decimalY,
+            selected.map { it.confidence }.average().toFloat()
+        )
+    }
+
+    private fun findCandidates(
+        integral: IntArray,
+        width: Int,
+        height: Int
+    ): List<DigitBox> {
+        val candidates = ArrayList<DigitBox>()
+        val segmentMeans = FloatArray(11)
+        val digitOut = CharArray(1)
+        val ratios = floatArrayOf(.36f, .41f, .46f, .51f, .56f, .62f)
+        val minHeight = max(14, min(width, height) / 38)
+        val maxHeight = min((height * .72f).toInt(), (width * .65f).toInt()).coerceAtLeast(minHeight)
+        var digitHeight = minHeight
+
+        while (digitHeight <= maxHeight) {
+            val stepX = max(1, digitHeight / 8)
+            val stepY = max(1, digitHeight / 7)
+            for (ratio in ratios) {
+                val digitWidth = max(8, (digitHeight * ratio).roundToInt())
+                if (digitWidth > width || digitHeight > height) continue
+                var y = 0
+                while (y + digitHeight <= height) {
+                    var x = 0
+                    while (x + digitWidth <= width) {
+                        val confidence = scoreCandidate(
+                            integral, width, height, x, y, digitWidth, digitHeight,
+                            segmentMeans, digitOut
+                        )
+                        if (confidence >= .45f) {
+                            candidates.add(
+                                DigitBox(
+                                    digitOut[0], x, y, x + digitWidth, y + digitHeight, confidence
+                                )
+                            )
+                        }
+                        x += stepX
+                    }
+                    y += stepY
+                }
+            }
+            digitHeight = max(digitHeight + 1, (digitHeight * 1.14f).roundToInt())
+            if (candidates.size > 3500) {
+                val pruned = suppressCandidates(candidates, 450)
+                candidates.clear()
+                candidates.addAll(pruned)
+            }
+        }
+        return suppressCandidates(candidates, 180)
+    }
+
+    private fun scoreCandidate(
+        integral: IntArray,
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        digitWidth: Int,
+        digitHeight: Int,
+        samples: FloatArray,
+        digitOut: CharArray
+    ): Float {
+        for (i in segmentZones.indices) {
+            val z = segmentZones[i]
+            samples[i] = mean(
+                integral, width, height,
+                x + (z[0] * digitWidth).toInt(),
+                y + (z[1] * digitHeight).toInt(),
+                x + max((z[2] * digitWidth).toInt(), (z[0] * digitWidth).toInt() + 1),
+                y + max((z[3] * digitHeight).toInt(), (z[1] * digitHeight).toInt() + 1)
+            )
+        }
+        for (i in backgroundZones.indices) {
+            val z = backgroundZones[i]
+            samples[7 + i] = mean(
+                integral, width, height,
+                x + (z[0] * digitWidth).toInt(),
+                y + (z[1] * digitHeight).toInt(),
+                x + max((z[2] * digitWidth).toInt(), (z[0] * digitWidth).toInt() + 1),
+                y + max((z[3] * digitHeight).toInt(), (z[1] * digitHeight).toInt() + 1)
+            )
+        }
+        val background = (samples[7] + samples[8] + samples[9] + samples[10]) * .25f
+        for (i in 0..6) samples[i] -= background
+
+        var best = 0f
+        var bestDigit = '?'
+        for (polarity in intArrayOf(1, -1)) {
+            for (digitIndex in digitMasks.indices) {
+                val mask = digitMasks[digitIndex]
+                val activeCount = Integer.bitCount(mask)
+                var activeSum = 0f
+                for (segment in 0..6) {
+                    if ((mask and (1 shl segment)) != 0) {
+                        activeSum += samples[segment] * polarity
+                    }
+                }
+                val activeMean = activeSum / activeCount
+                if (activeMean < 7f) continue
+
+                var error = 0f
+                for (segment in 0..6) {
+                    val signal = samples[segment] * polarity
+                    error += if ((mask and (1 shl segment)) != 0) {
+                        val delta = signal - activeMean
+                        delta * delta
+                    } else {
+                        signal * signal
+                    }
+                }
+                val fit = (1f - sqrt(error / 7f) / activeMean).coerceIn(0f, 1f)
+                val contrast = ((activeMean - 5f) / 27f).coerceIn(0f, 1f)
+                val score = fit * contrast
+                if (score > best) {
+                    best = score
+                    bestDigit = digitChars[digitIndex]
+                }
+            }
+        }
+        digitOut[0] = bestDigit
         return best
     }
 
-    fun read(gray: ByteArray, width: Int, height: Int): String? {
-        if (width < 60 || height < 30 || gray.size < width * height) return null
-        // Crop the central display band. User aligns the display with the on-screen guide.
-        val left = (width * .12f).toInt()
-        val right = (width * .88f).toInt()
-        val top = (height * .25f).toInt()
-        val bottom = (height * .75f).toInt()
-        val cw = right - left
-        val ch = bottom - top
-        if (cw < 45 || ch < 20) return null
-        val digitW = cw / 3
-        val histogram = IntArray(256)
-        var total = 0
-        for (y in top until bottom) for (x in left until right) {
-            histogram[gray[y * width + x].toInt() and 0xff]++
-            total++
-        }
-        fun percentile(target: Int): Int {
-            var sum = 0
-            for (value in histogram.indices) {
-                sum += histogram[value]
-                if (sum >= target) return value
-            }
-            return 255
-        }
-        val low = percentile(total / 10)
-        val high = percentile(total * 9 / 10)
-        if (high - low < 18) return null
-        val threshold = (low + high) / 2
-        val result = StringBuilder(3)
-        for (d in 0..2) {
-            val x0 = left + d * digitW
-            var mask = 0
-            zones.forEachIndexed { index, z ->
-                val sx = x0 + (z[0] * digitW).toInt()
-                val sy = top + (z[1] * ch).toInt()
-                val ex = x0 + max((z[2] * digitW).toInt(), (z[0] * digitW).toInt() + 1)
-                val ey = top + max((z[3] * ch).toInt(), (z[1] * ch).toInt() + 1)
-                var sum = 0L
-                var count = 0
-                for (y in sy until min(ey, bottom)) for (x in sx until min(ex, x0 + digitW)) {
-                    sum += gray[y * width + x].toInt() and 0xff
-                    count++
+    private fun findRows(candidates: List<DigitBox>): List<DigitRow> {
+        if (candidates.isEmpty()) return emptyList()
+        val result = ArrayList<DigitRow>()
+        val seen = HashSet<String>()
+        for (seed in candidates) {
+            val seedHeight = seed.height.toFloat()
+            val aligned = candidates.filter { box ->
+                abs(box.height - seed.height) <= max(2f, seedHeight * .23f) &&
+                    abs(box.bottom - seed.bottom) <= max(3f, seedHeight * .23f)
+            }.sortedBy { it.left }
+            if (aligned.isEmpty()) continue
+
+            var chain = ArrayList<DigitBox>()
+            fun flush() {
+                if (chain.isEmpty()) return
+                val sorted = chain.sortedBy { it.left }
+                val averageHeight = sorted.map { it.height }.average().toFloat()
+                val key = (sorted.first().left / 7).toString() + ":" +
+                    (sorted.last().right / 7).toString() + ":" + (averageHeight / 4).toInt()
+                if (!seen.add(key)) {
+                    chain = ArrayList()
+                    return
                 }
-                if (count > 0) {
-                    val mean = sum.toFloat() / count
-                    // Support dark-on-light and light-on-dark LCD/LED displays.
-                    val on = mean < threshold
-                    if (on) mask = mask or (1 shl index)
+                val averageConfidence = sorted.map { it.confidence }.average().toFloat()
+                val score = averageConfidence * 1.5f +
+                    sorted.size * .42f + ln(averageHeight.coerceAtLeast(1f)) * .75f
+                result.add(DigitRow(sorted, averageHeight, averageConfidence, score))
+                chain = ArrayList()
+            }
+            for (box in aligned) {
+                if (chain.isEmpty()) {
+                    chain.add(box)
+                    continue
+                }
+                val previous = chain.last()
+                val gap = box.left - previous.right
+                val gapLimit = max(5f, min(previous.height, box.height) * .72f)
+                if (gap <= gapLimit && gap >= -min(previous.height, box.height) * .25f) {
+                    chain.add(box)
+                } else {
+                    flush()
+                    chain.add(box)
                 }
             }
-            result.append(digitByMask[mask] ?: return null)
+            flush()
         }
-        return result.toString()
+        return result
+    }
+
+    private fun suppressCandidates(candidates: List<DigitBox>, limit: Int): List<DigitBox> {
+        if (candidates.isEmpty()) return emptyList()
+        val ordered = candidates.sortedByDescending { it.confidence }
+        val kept = ArrayList<DigitBox>()
+        for (candidate in ordered) {
+            val duplicate = kept.any { previous ->
+                val heightRatio = max(candidate.height, previous.height).toFloat() /
+                    min(candidate.height, previous.height).coerceAtLeast(1)
+                val dx = abs((candidate.left + candidate.right) - (previous.left + previous.right)) / 2f
+                val dy = abs((candidate.top + candidate.bottom) - (previous.top + previous.bottom)) / 2f
+                heightRatio < 1.38f &&
+                    dx < max(4f, min(candidate.height, previous.height) * .30f) &&
+                    dy < max(3f, min(candidate.height, previous.height) * .22f)
+            }
+            if (!duplicate) kept.add(candidate)
+            if (kept.size >= limit) break
+        }
+        return kept
+    }
+
+    private fun buildIntegral(gray: ByteArray, width: Int, height: Int): IntArray {
+        val stride = width + 1
+        val integral = IntArray((width + 1) * (height + 1))
+        for (y in 0 until height) {
+            var rowSum = 0
+            val srcRow = y * width
+            val dstRow = (y + 1) * stride
+            val previousRow = y * stride
+            for (x in 0 until width) {
+                rowSum += gray[srcRow + x].toInt() and 0xff
+                integral[dstRow + x + 1] = integral[previousRow + x + 1] + rowSum
+            }
+        }
+        return integral
+    }
+
+    private fun mean(
+        integral: IntArray,
+        width: Int,
+        height: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int
+    ): Float {
+        val x0 = left.coerceIn(0, width)
+        val y0 = top.coerceIn(0, height)
+        val x1 = right.coerceIn(x0 + 1, width)
+        val y1 = bottom.coerceIn(y0 + 1, height)
+        val stride = width + 1
+        val sum = integral[y1 * stride + x1] - integral[y0 * stride + x1] -
+            integral[y1 * stride + x0] + integral[y0 * stride + x0]
+        return sum.toFloat() / ((x1 - x0) * (y1 - y0)).coerceAtLeast(1)
     }
 }

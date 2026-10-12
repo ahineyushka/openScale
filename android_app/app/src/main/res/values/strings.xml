@@ -626,6 +626,7 @@
     <string name="settings_item_about">About</string>
     <string name="settings_item_recognition">Recognition settings</string>
     <string name="camera_format_title">Display format</string>
+    <string name="camera_format_hint">X = full-size digit; x = smaller digit. Lowercase x positions are part of the weight.</string>
     <string name="camera_unit_title">Weight unit shown on the scale</string>
     <string name="camera_scan">Scan weight from display</string>
     <string name="camera_choose_photo">Choose photo (test)</string>
@@ -634,7 +635,7 @@
     <string name="camera_processing_photo">Analyzing selected photo…</string>
     <string name="camera_not_recognized">Display not recognized</string>
     <string name="camera_photo_error">Cannot read this photo</string>
-    <string name="camera_align_display">Align the scale display in the centre of the preview</string>
+    <string name="camera_align_display">Keep the scale display visible in the camera preview</string>
     <string name="camera_recognized">Recognized: %1$s %2$s</string>
     <string name="camera_confirm">Confirm</string>
     <string name="camera_retry">Retry</string>

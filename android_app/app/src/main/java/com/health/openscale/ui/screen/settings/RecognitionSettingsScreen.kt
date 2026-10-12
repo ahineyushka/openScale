@@ -21,24 +21,24 @@ import androidx.compose.ui.unit.dp
 import com.health.openscale.R
 import com.health.openscale.ui.screen.camera.CameraScaleScanActivity
 import com.health.openscale.ui.shared.SharedViewModel
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
 fun RecognitionSettingsScreen(sharedViewModel: SharedViewModel) {
     val scope = rememberCoroutineScope()
     val formatFlow = androidx.compose.runtime.remember(sharedViewModel) {
-        sharedViewModel.observeSetting(CameraScaleScanActivity.FORMAT_KEY, "XXX.X")
+        sharedViewModel.observeSetting(CameraScaleScanActivity.FORMAT_KEY, "XXX.XX")
     }
     val unitFlow = androidx.compose.runtime.remember(sharedViewModel) {
         sharedViewModel.observeSetting(CameraScaleScanActivity.UNIT_KEY, "KG")
     }
-    val format by formatFlow.collectAsState(initial = "XXX.X")
+    val format by formatFlow.collectAsState(initial = "XXX.XX")
     val unit by unitFlow.collectAsState(initial = "KG")
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text(stringResource(R.string.camera_format_title), style = MaterialTheme.typography.titleMedium)
-        listOf("XXX", "XXX.X", "XXX.XX", "XXX.XXX").forEach { option ->
+        Text(stringResource(R.string.camera_format_hint), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+        listOf("XXX.XX", "XXX.X", "XXX.Xx", "XXX.xx", "XXX.XXX", "XXX", "XXX.").forEach { option ->
             androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 RadioButton(selected = format == option, onClick = {
                     scope.launch { sharedViewModel.saveSetting(CameraScaleScanActivity.FORMAT_KEY, option) }
