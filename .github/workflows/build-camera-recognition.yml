@@ -32,7 +32,9 @@ jobs:
       - name: Print unit test reports on failure
         if: failure()
         run: |
-          find app/build/test-results/testDebugUnitTest -maxdepth 1 -name '*.xml' -type f -print -exec cat {} \\\;
+          for report in app/build/test-results/testDebugUnitTest/*.xml; do
+            [ -f "$report" ] && cat "$report"
+          done
 
       - name: Upload unit test reports
         if: always()
