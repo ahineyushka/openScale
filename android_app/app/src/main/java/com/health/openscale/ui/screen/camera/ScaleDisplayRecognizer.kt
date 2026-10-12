@@ -137,15 +137,15 @@ internal object ScaleDisplayRecognizer {
     /**
      * Finds characters and applies the user-selected template.
      *
-     * maxSide limits work for live camera frames. Larger photos can use a larger value
-     * to preserve details of small digits.
+     * maxSide limits work for live camera frames. Still photos keep more pixels by default
+     * because small LCD segments lose contrast quickly when heavily downsampled.
      */
     fun find(
         gray: ByteArray,
         width: Int,
         height: Int,
         format: String,
-        maxSide: Int = 420
+        maxSide: Int = 800
     ): Detection? {
         if (width < 40 || height < 40 || gray.size < width * height) return null
         val longestSide = max(width, height)
