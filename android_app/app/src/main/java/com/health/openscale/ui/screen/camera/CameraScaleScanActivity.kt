@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraCharacteristics
@@ -66,6 +67,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var confirm: Button
     private lateinit var retry: Button
+    private lateinit var rotatePhoto: Button
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
     private var camera: CameraDevice? = null
@@ -79,6 +81,7 @@ class CameraScaleScanActivity : ComponentActivity() {
     private var savedUnit = "KG"
     private var stableWeight: Float? = null
     private var saving = false
+    private var selectedPhoto: Bitmap? = null
     @Volatile private var photoMode = false
     private val pickPhoto = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -154,8 +157,10 @@ class CameraScaleScanActivity : ComponentActivity() {
                 repeatedFrames = 0
                 stableAt = 0L
                 confirm.visibility = View.GONE
+                selectedPhoto = null
                 photoPreview.setImageDrawable(null)
                 photoPreview.visibility = View.GONE
+                rotatePhoto.visibility = View.GONE
                 preview.visibility = View.VISIBLE
                 status.text = getString(com.health.openscale.R.string.camera_select_photo_hint)
                 // Drop queued camera-frame work before processing the selected file.
@@ -165,6 +170,12 @@ class CameraScaleScanActivity : ComponentActivity() {
             }
         }
         row.addView(choosePhoto)
+        rotatePhoto = Button(this).apply {
+            text = getString(com.health.openscale.R.string.camera_rotate_photo)
+            visibility = View.GONE
+            setOnClickListener { rotateSelectedPhoto() }
+        }
+        row.addView(rotatePhoto)
         retry = Button(this).apply {
             text = getString(com.health.openscale.R.string.camera_retry)
             setOnClickListener {
@@ -174,8 +185,10 @@ class CameraScaleScanActivity : ComponentActivity() {
                 repeatedFrames = 0
                 stableAt = 0L
                 confirm.visibility = View.GONE
+                selectedPhoto = null
                 photoPreview.setImageDrawable(null)
                 photoPreview.visibility = View.GONE
+                rotatePhoto.visibility = View.GONE
                 preview.visibility = View.VISIBLE
                 status.text = getString(com.health.openscale.R.string.camera_align_display)
                 if (preview.isAvailable) openCamera()
@@ -248,6 +261,55 @@ class CameraScaleScanActivity : ComponentActivity() {
         } catch (_: Exception) {
             cameraOpening = false
             status.text = getString(com.health.openscale.R.string.camera_error)
+        }
+    }
+
+    private fun rotateSelectedPhoto() {
+        val source = selectedPhoto ?: return
+        val matrix = Matrix().apply { postRotate(90f) }
+        val rotated = Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+        selectedPhoto = rotated
+        if (rotated !== source) source.recycle()
+        stableDigits = null
+        stableWeight = null
+        repeatedFrames = 0
+        stableAt = 0L
+        confirm.visibility = View.GONE
+        photoPreview.setImageBitmap(rotated)
+        status.text = getString(com.health.openscale.R.string.camera_processing_photo)
+        analyzeSelectedPhoto(rotated)
+    }
+
+    private fun analyzeSelectedPhoto(bitmap: Bitmap) {
+        cameraHandler?.post {
+            try {
+                val width = bitmap.width
+                val height = bitmap.height
+                val gray = ByteArray(width * height)
+                val pixels = IntArray(width * height)
+                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                for (i in pixels.indices) {
+                    val p = pixels[i]
+                    gray[i] = ((0.299f * ((p shr 16) and 0xff)) +
+                        (0.587f * ((p shr 8) and 0xff)) +
+                        (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
+                }
+                val digits = ScaleDisplayRecognizer.read(gray, width, height)
+                runOnUiThread {
+                    if (digits == null) {
+                        status.text = getString(com.health.openscale.R.string.camera_not_recognized)
+                    } else {
+                        val decimals = when (savedFormat) { "XXX" -> 0; "XXX.X" -> 1; "XXX.XX" -> 2; "XXX.XXX" -> 3; else -> 1 }
+                        val raw = digits.toFloat() / Math.pow(10.0, decimals.toDouble()).toFloat()
+                        val symbols = DecimalFormatSymbols(Locale.getDefault())
+                        val fmt = DecimalFormat(if (decimals == 0) "0" else "0." + "0".repeat(decimals), symbols)
+                        status.text = getString(com.health.openscale.R.string.camera_recognized, fmt.format(raw), UnitType.valueOf(savedUnit).displayName)
+                    }
+                    confirm.visibility = View.GONE
+                }
+            } catch (_: Exception) {
+                runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
+            }
         }
     }
 
