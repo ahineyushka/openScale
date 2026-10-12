@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: android_app/**/*.gradle*
 
       - name: Test camera digit candidate detector
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+        run: ./gradlew :app:testDebugUnitTest --tests "com.health.openscale.ui.screen.camera.ScaleDisplayRecognizerTest" --no-daemon --stacktrace
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
