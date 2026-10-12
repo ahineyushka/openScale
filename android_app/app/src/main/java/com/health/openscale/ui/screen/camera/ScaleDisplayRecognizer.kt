@@ -339,72 +339,188 @@ internal object ScaleDisplayRecognizer {
         )
     }
 
+    private data class TemplateSpec(
+        val integerSlots: Int,
+        val largeFractionSlots: Int,
+        val smallFractionSlots: Int,
+        val decimalPlaces: Int,
+        val hasDecimal: Boolean
+    ) {
+        val minLargeDigits: Int get() = largeFractionSlots + 1
+        val maxLargeDigits: Int get() = integerSlots + largeFractionSlots
+    }
+
+    private data class RankedReading(
+        val reading: ChosenReading,
+        val score: Float
+    )
+
+    /**
+     * Matches a selected format against candidate rectangles only.
+     *
+     * Any candidates not part of the best matching sequence are ignored. Missing leading
+     * integer positions are allowed; the fractional positions and their selected sizes are not.
+     */
+    internal fun matchTemplate(
+        candidates: List<DigitBox>,
+        format: String
+    ): Detection? {
+        val rows = findRows(candidates)
+        val chosen = chooseReading(rows, candidates, format) ?: return null
+        return Detection(
+            chosen.digits,
+            chosen.value,
+            chosen.boxes.sortedBy { it.left },
+            chosen.decimalX,
+            chosen.decimalY,
+            chosen.hasDecimal,
+            chosen.confidence
+        )
+    }
+
+    private fun parseTemplate(format: String): TemplateSpec? {
+        val point = format.indexOf('.')
+        if (point >= 0 && format.indexOf('.', point + 1) >= 0) return null
+        val integerPart = if (point < 0) format else format.substring(0, point)
+        val fractionPart = if (point < 0) "" else format.substring(point + 1)
+        if (integerPart.isEmpty() || integerPart.any { it != 'X' }) return null
+        if (fractionPart.any { it != 'X' && it != 'x' }) return null
+        if (point < 0 && format.any { it != 'X' }) return null
+
+        return TemplateSpec(
+            integerSlots = integerPart.length,
+            largeFractionSlots = fractionPart.count { it == 'X' },
+            smallFractionSlots = fractionPart.count { it == 'x' },
+            decimalPlaces = fractionPart.length,
+            hasDecimal = point >= 0
+        )
+    }
+
     private fun chooseReading(
         rows: List<DigitRow>,
         candidates: List<DigitBox>,
         format: String
     ): ChosenReading? {
-        val upperSlots = format.count { it == 'X' }
-        val smallSlots = format.count { it == 'x' }
-        val decimals = decimalPlaces(format)
-        if (upperSlots == 0 && smallSlots == 0) return null
+        val template = parseTemplate(format) ?: return null
+        if (rows.isEmpty()) return null
+        var best: RankedReading? = null
 
-        val minimumMainDigits = max(1, decimals - smallSlots + 1)
-        val compatibleRows = rows.filter { row ->
-            row.boxes.size in minimumMainDigits..upperSlots
-        }.sortedByDescending { it.score }
-        val primary = compatibleRows.firstOrNull() ?: return null
-        val mainBoxes = primary.boxes.sortedBy { it.left }
-        var smallBoxes = emptyList<DigitBox>()
+        for (row in rows) {
+            val sorted = row.boxes.sortedBy { it.left }
+            val minLength = template.minLargeDigits
+            val maxLength = min(template.maxLargeDigits, sorted.size)
+            if (minLength > maxLength) continue
 
-        if (smallSlots > 0) {
-            val rightEdge = mainBoxes.lastOrNull()?.right ?: return null
-            val baseline = mainBoxes.map { it.bottom }.average().toFloat()
-            val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
-            val smallCandidates = candidates.filter { box ->
-                val ratio = box.height / referenceHeight
-                ratio in .28f.. .82f &&
-                    box.left >= rightEdge - referenceHeight * .12f &&
-                    box.left - rightEdge <= referenceHeight * .70f &&
-                    abs(box.bottom - baseline) <= referenceHeight * .28f
+            for (length in minLength..maxLength) {
+                for (start in 0..(sorted.size - length)) {
+                    val mainBoxes = sorted.subList(start, start + length).toList()
+                    val mainGeometry = sequenceGeometryScore(mainBoxes)
+                    if (mainGeometry <= 0f) continue
+                    val mainConfidence = mainBoxes.map { it.confidence }.average().toFloat()
+                    val lengthFit = length.toFloat() / template.maxLargeDigits.coerceAtLeast(1)
+                    val mainScore = mainConfidence * .62f + lengthFit * .26f + mainGeometry * .12f
+
+                    if (template.smallFractionSlots == 0) {
+                        val candidate = buildReading(mainBoxes, emptyList(), template) ?: continue
+                        val score = mainScore
+                        if (best == null || score > best.score) best = RankedReading(candidate, score)
+                        continue
+                    }
+
+                    val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
+                    if (referenceHeight <= 0f) continue
+                    val rightEdge = mainBoxes.last().right
+                    val baseline = mainBoxes.map { it.bottom }.average().toFloat()
+                    val smallCandidates = candidates.filter { box ->
+                        val ratio = box.height / referenceHeight
+                        val gap = box.left - rightEdge
+                        ratio in .28f.. .82f &&
+                            gap >= -referenceHeight * .12f &&
+                            gap <= referenceHeight * .72f &&
+                            abs(box.bottom - baseline) <= referenceHeight * .32f
+                    }
+                    val smallRows = findRows(smallCandidates)
+                    for (smallRow in smallRows) {
+                        val smallSorted = smallRow.boxes.sortedBy { it.left }
+                        val required = template.smallFractionSlots
+                        if (smallSorted.size < required) continue
+                        for (smallStart in 0..(smallSorted.size - required)) {
+                            val smallBoxes = smallSorted.subList(smallStart, smallStart + required).toList()
+                            if (sequenceGeometryScore(smallBoxes) <= 0f) continue
+                            val firstGap = smallBoxes.first().left - rightEdge
+                            if (firstGap < -referenceHeight * .12f ||
+                                firstGap > referenceHeight * .72f
+                            ) continue
+
+                            val gapRatio = firstGap / referenceHeight
+                            val gapFit = (1f - abs(gapRatio - .12f) / .85f).coerceIn(0f, 1f)
+                            val smallConfidence = smallBoxes.map { it.confidence }.average().toFloat()
+                            val smallGeometry = sequenceGeometryScore(smallBoxes)
+                            val score = mainScore * .68f +
+                                smallConfidence * .18f +
+                                smallGeometry * .08f +
+                                gapFit * .06f
+                            val candidate = buildReading(mainBoxes, smallBoxes, template) ?: continue
+                            if (best == null || score > best.score) best = RankedReading(candidate, score)
+                        }
+                    }
+                }
             }
-            val smallRows = findRows(smallCandidates)
-                .filter { row ->
-                    row.boxes.size >= smallSlots &&
-                        row.height in (referenceHeight * .28f)..(referenceHeight * .82f) &&
-                        row.boxes.first().left - rightEdge <= referenceHeight * .70f
-                }
-                .sortedBy { row ->
-                    val gap = max(0, row.boxes.first().left - rightEdge)
-                    val sizePenalty = abs(row.height / referenceHeight - .55f)
-                    gap.toFloat() / referenceHeight + sizePenalty * .35f - row.confidence * .15f
-                }
-            val smallRow = smallRows.firstOrNull() ?: return null
-            smallBoxes = smallRow.boxes.sortedBy { it.left }.take(smallSlots)
         }
-        if (mainBoxes.size > upperSlots || smallBoxes.size < smallSlots) return null
-        val selected = (mainBoxes + smallBoxes).distinctBy {
-            ((it.left + it.right) / 2) / 3 to ((it.top + it.bottom) / 2) / 3
-        }.sortedBy { it.left }
-        if (selected.isEmpty() || selected.size < decimals) return null
+        return best?.reading
+    }
+
+    /**
+     * Scores the spacing and alignment within one candidate sequence. Singleton sequences are
+     * valid because a small weight can have only one visible integer digit.
+     */
+    private fun sequenceGeometryScore(boxes: List<DigitBox>): Float {
+        if (boxes.isEmpty()) return 0f
+        if (boxes.size == 1) return 1f
+        val averageHeight = boxes.map { it.height }.average().toFloat()
+        if (averageHeight <= 0f) return 0f
+        if (boxes.any { it.height / averageHeight !in .74f..1.26f }) return 0f
+        val baseline = boxes.map { it.bottom }.average().toFloat()
+        if (boxes.any { abs(it.bottom - baseline) > averageHeight * .24f }) return 0f
+
+        val gaps = boxes.zipWithNext { left, right ->
+            (right.left - left.right).toFloat() / averageHeight
+        }
+        if (gaps.any { it !in -.12f.. .78f }) return 0f
+        val meanGap = gaps.average().toFloat()
+        val meanDeviation = gaps.map { abs(it - meanGap) }.average().toFloat()
+        val spacingConsistency = (1f - meanDeviation / .38f).coerceIn(0f, 1f)
+        val spacingPlausibility = (1f - abs(meanGap - .16f) / .72f).coerceIn(0f, 1f)
+        return spacingConsistency * .55f + spacingPlausibility * .45f
+    }
+
+    private fun buildReading(
+        mainBoxes: List<DigitBox>,
+        smallBoxes: List<DigitBox>,
+        template: TemplateSpec
+    ): ChosenReading? {
+        val selected = (mainBoxes + smallBoxes).sortedBy { it.left }
+        if (selected.isEmpty()) return null
+        if (mainBoxes.size !in template.minLargeDigits..template.maxLargeDigits) return null
+        if (smallBoxes.size != template.smallFractionSlots) return null
 
         val digitString = selected.joinToString("") { it.digit.toString() }
         val integerValue = digitString.toLongOrNull() ?: return null
         var divisor = 1.0
-        repeat(decimals) { divisor *= 10.0 }
+        repeat(template.decimalPlaces) { divisor *= 10.0 }
         val value = integerValue.toDouble() / divisor
-        val hasDecimal = format.contains('.')
-        val boundaryIndex = selected.size - decimals
+
+        // Number of displayed large characters minus the large fractional positions is the
+        // number of visible integer characters. Lowercase fractional positions come afterwards.
+        val boundaryIndex = (mainBoxes.size - template.largeFractionSlots).coerceIn(0, selected.size)
         val decimalX = when {
-            !hasDecimal -> -1
-            decimals == 0 -> selected.last().right + max(2, selected.last().width / 5)
-            boundaryIndex <= 0 -> (selected.first().left - max(2, selected.first().width / 5)).coerceAtLeast(0)
+            !template.hasDecimal -> -1
+            boundaryIndex == 0 -> (selected.first().left - max(2, selected.first().width / 5)).coerceAtLeast(0)
             boundaryIndex >= selected.size -> selected.last().right + max(2, selected.last().width / 5)
             else -> (selected[boundaryIndex - 1].right + selected[boundaryIndex].left) / 2
         }
-        val largeBoxes = if (mainBoxes.isNotEmpty()) mainBoxes else selected
-        val baseline = largeBoxes.map { it.bottom }.average().toInt()
-        val averageHeight = largeBoxes.map { it.height }.average().toInt().coerceAtLeast(1)
+        val baseline = mainBoxes.map { it.bottom }.average().toInt()
+        val averageHeight = mainBoxes.map { it.height }.average().toInt().coerceAtLeast(1)
         val decimalY = (baseline - max(1, averageHeight / 12)).coerceAtLeast(0)
         return ChosenReading(
             digitString,
@@ -412,7 +528,7 @@ internal object ScaleDisplayRecognizer {
             selected,
             decimalX,
             decimalY,
-            hasDecimal,
+            template.hasDecimal,
             selected.map { it.confidence }.average().toFloat()
         )
     }

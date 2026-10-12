@@ -5,7 +5,9 @@
  */
 package com.health.openscale.ui.screen.camera
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -31,6 +33,78 @@ class ScaleDisplayRecognizerTest {
             ScaleDisplayRecognizer.findDigitCandidates(blank, width, height).isEmpty()
         )
     }
+
+    @Test
+    fun templateXxIgnoresUnmatchedRectanglesAndAllowsMissingLeadingDigit() {
+        val candidates = listOf(
+            box('1', 40, 40, 54, 70),
+            box('2', 58, 40, 72, 70),
+            box('3', 76, 40, 90, 70),
+            box('4', 94, 40, 108, 70),
+            // Small two-digit auxiliary readout: should be used only by a template with "xx".
+            box('2', 112, 55, 120, 70),
+            box('5', 122, 55, 130, 70),
+            // Unrelated large character on another baseline.
+            box('8', 175, 8, 189, 38, confidence = .99f)
+        )
+
+        val result = ScaleDisplayRecognizer.matchTemplate(candidates, "XXX.XX")
+
+        assertNotNull(result)
+        assertEquals(12.34, result!!.value, .0001)
+        assertEquals("1234", result.digits)
+        assertEquals(4, result.boxes.size)
+        assertTrue(result.hasDecimal)
+        assertEquals(2, result.decimalX.let { result.boxes.take(2).last().right.let { x -> if (it >= x) 2 else -1 } })
+    }
+
+    @Test
+    fun templateXXXDotxxSelectsTwoSmallFractionDigits() {
+        val candidates = listOf(
+            box('1', 40, 40, 54, 70),
+            box('2', 58, 40, 72, 70),
+            box('3', 76, 40, 90, 70),
+            box('4', 94, 55, 102, 70),
+            box('5', 104, 55, 112, 70),
+            box('8', 170, 5, 184, 35, confidence = .99f)
+        )
+
+        val result = ScaleDisplayRecognizer.matchTemplate(candidates, "XXX.xx")
+
+        assertNotNull(result)
+        assertEquals(123.45, result!!.value, .0001)
+        assertEquals("12345", result.digits)
+        assertEquals(5, result.boxes.size)
+        assertTrue(result.hasDecimal)
+    }
+
+    @Test
+    fun templateXXXDotXxSelectsOneSmallDigitAndIgnoresOtherSmallCandidate() {
+        val candidates = listOf(
+            box('1', 40, 40, 54, 70),
+            box('2', 58, 40, 72, 70),
+            box('3', 76, 40, 90, 70),
+            box('4', 94, 55, 102, 70),
+            box('5', 104, 55, 112, 70)
+        )
+
+        val result = ScaleDisplayRecognizer.matchTemplate(candidates, "XXX.Xx")
+
+        assertNotNull(result)
+        assertEquals(12.34, result!!.value, .0001)
+        assertEquals("1234", result.digits)
+        assertEquals(4, result.boxes.size)
+        assertEquals('4', result.boxes.last().digit)
+    }
+
+    private fun box(
+        digit: Char,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        confidence: Float = .92f
+    ) = ScaleDisplayRecognizer.DigitBox(digit, left, top, right, bottom, confidence)
 
     private fun assertFindsEight(background: Int, segment: Int) {
         val width = 220
