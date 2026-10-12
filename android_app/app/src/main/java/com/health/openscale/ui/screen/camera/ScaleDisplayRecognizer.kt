@@ -120,6 +120,9 @@ internal object ScaleDisplayRecognizer {
         val confidence: Float
     )
 
+    /** Raw candidates and the best sequence selected by the user template, from one scan. */
+    data class Analysis(val candidates: List<DigitBox>, val detection: Detection?)
+
     private data class DigitRow(
         val boxes: List<DigitBox>,
         val height: Float,
@@ -190,8 +193,16 @@ internal object ScaleDisplayRecognizer {
         height: Int,
         format: String,
         maxSide: Int = 800
-    ): Detection? {
-        if (width < 40 || height < 40 || gray.size < width * height) return null
+    ): Detection? = analyze(gray, width, height, format, maxSide).detection
+
+    fun analyze(
+        gray: ByteArray,
+        width: Int,
+        height: Int,
+        format: String,
+        maxSide: Int = 800
+    ): Analysis {
+        if (width < 40 || height < 40 || gray.size < width * height) return Analysis(emptyList(), null)
         val longestSide = max(width, height)
         val resize = longestSide.toFloat() / maxSide.coerceAtLeast(160)
         val smallWidth = if (resize > 1f) (width / resize).roundToInt().coerceAtLeast(1) else width
@@ -211,13 +222,22 @@ internal object ScaleDisplayRecognizer {
         }
         val integral = buildIntegral(smallGray, smallWidth, smallHeight)
         val candidates = findCandidates(integral, smallWidth, smallHeight)
-        if (candidates.isEmpty()) return null
-        val rows = findRows(candidates)
-        if (rows.isEmpty()) return null
-        val chosen = chooseReading(rows, candidates, format) ?: return null
-
         val scaleX = width.toFloat() / smallWidth
         val scaleY = height.toFloat() / smallHeight
+        val scaledCandidates = candidates.map { box ->
+            DigitBox(
+                box.digit,
+                (box.left * scaleX).roundToInt().coerceIn(0, width - 1),
+                (box.top * scaleY).roundToInt().coerceIn(0, height - 1),
+                (box.right * scaleX).roundToInt().coerceIn(1, width),
+                (box.bottom * scaleY).roundToInt().coerceIn(1, height),
+                box.confidence
+            )
+        }
+        if (candidates.isEmpty()) return Analysis(emptyList(), null)
+        val rows = findRows(candidates)
+        if (rows.isEmpty()) return Analysis(scaledCandidates, null)
+        val chosen = chooseReading(rows, candidates, format) ?: return Analysis(scaledCandidates, null)
         val refinedBoxes = chosen.boxes.map { refineBox(integral, smallGray, smallWidth, smallHeight, it) }
             .sortedBy { it.left }
         val scaledBoxes = refinedBoxes.map { box ->
@@ -243,14 +263,17 @@ internal object ScaleDisplayRecognizer {
         val mainBaseline = scaledBoxes.filter { it.height >= largeHeight * .80f }
             .map { it.bottom }.average().toInt()
         val decimalY = (mainBaseline - max(1, largeHeight / 12)).coerceAtLeast(0)
-        return Detection(
-            chosen.digits,
-            chosen.value,
-            scaledBoxes,
-            decimalX,
-            if (chosen.hasDecimal) decimalY else -1,
-            chosen.hasDecimal,
-            chosen.confidence
+        return Analysis(
+            scaledCandidates,
+            Detection(
+                chosen.digits,
+                chosen.value,
+                scaledBoxes,
+                decimalX,
+                if (chosen.hasDecimal) decimalY else -1,
+                chosen.hasDecimal,
+                chosen.confidence
+            )
         )
     }
 

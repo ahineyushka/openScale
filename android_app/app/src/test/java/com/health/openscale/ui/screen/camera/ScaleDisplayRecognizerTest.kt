@@ -106,6 +106,73 @@ class ScaleDisplayRecognizerTest {
         confidence: Float = .92f
     ) = ScaleDisplayRecognizer.DigitBox(digit, left, top, right, bottom, confidence)
 
+    @Test
+    fun fullScanSelectsLargeWeightDigitsAndIgnoresSmallTemperatureDigits() {
+        val width = 250
+        val height = 130
+        val gray = ByteArray(width * height) { 12.toByte() }
+        val mainY = 32
+        val mainWidth = 29
+        val mainHeight = 58
+        val mainXs = listOf(30, 64, 98, 132)
+        val digits = listOf('1', '2', '3', '4')
+        for (i in digits.indices) {
+            drawDigit(gray, width, mainXs[i], mainY, mainWidth, mainHeight, digits[i], 240)
+        }
+
+        // Two small digits share the readout row but are the scale's temperature.
+        drawDigit(gray, width, 171, mainY + mainHeight / 2, 14, 29, '2', 240)
+        drawDigit(gray, width, 188, mainY + mainHeight / 2, 14, 29, '5', 240)
+
+        val result = ScaleDisplayRecognizer.find(gray, width, height, "XXX.XX")
+
+        assertNotNull("Expected the combined detector and template matcher to find the weight", result)
+        assertEquals(12.34, result!!.value, .0001)
+        assertEquals("1234", result.digits)
+        assertEquals(4, result.boxes.size)
+        assertTrue(result.hasDecimal)
+        assertTrue(result.decimalX in result.boxes[1].right..result.boxes[2].left)
+    }
+
+    private fun drawDigit(
+        gray: ByteArray,
+        imageWidth: Int,
+        x: Int,
+        y: Int,
+        digitWidth: Int,
+        digitHeight: Int,
+        digit: Char,
+        foreground: Int
+    ) {
+        val masks = intArrayOf(
+            0b0111111, 0b0000110, 0b1011011, 0b1001111, 0b1100110,
+            0b1101101, 0b1111101, 0b0000111, 0b1111111, 0b1101111
+        )
+        val zones = listOf(
+            floatArrayOf(.22f, .07f, .78f, .20f),
+            floatArrayOf(.66f, .18f, .83f, .42f),
+            floatArrayOf(.66f, .58f, .83f, .82f),
+            floatArrayOf(.22f, .80f, .78f, .93f),
+            floatArrayOf(.17f, .58f, .34f, .82f),
+            floatArrayOf(.17f, .18f, .34f, .42f),
+            floatArrayOf(.22f, .44f, .78f, .56f)
+        )
+        val mask = masks[digit - '0']
+        for (index in zones.indices) {
+            if ((mask and (1 shl index)) == 0) continue
+            val zone = zones[index]
+            val left = x + (zone[0] * digitWidth).toInt()
+            val top = y + (zone[1] * digitHeight).toInt()
+            val right = x + (zone[2] * digitWidth).toInt()
+            val bottom = y + (zone[3] * digitHeight).toInt()
+            for (py in top until bottom) {
+                for (px in left until right) {
+                    gray[py * imageWidth + px] = foreground.toByte()
+                }
+            }
+        }
+    }
+
     private fun assertFindsEight(background: Int, segment: Int) {
         val width = 220
         val height = 120
