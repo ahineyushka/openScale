@@ -294,7 +294,7 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val digits = ScaleDisplayRecognizer.read(gray, width, height)
+                val digits = ScaleDisplayRecognizer.find(gray, width, height)?.digits
                 runOnUiThread {
                     if (digits == null) {
                         status.text = getString(com.health.openscale.R.string.camera_not_recognized)
@@ -339,7 +339,7 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val digits = ScaleDisplayRecognizer.read(gray, width, height)
+                val digits = ScaleDisplayRecognizer.find(gray, width, height)?.digits
                 runOnUiThread {
                     // Display the exact image that was analyzed, not the stale camera preview.
                     photoPreview.setImageBitmap(bitmap)
