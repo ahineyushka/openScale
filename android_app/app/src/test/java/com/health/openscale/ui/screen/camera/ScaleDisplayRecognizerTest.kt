@@ -124,9 +124,21 @@ class ScaleDisplayRecognizerTest {
         drawDigit(gray, width, 171, mainY + mainHeight / 2, 14, 29, '2', 240)
         drawDigit(gray, width, 188, mainY + mainHeight / 2, 14, 29, '5', 240)
 
-        val result = ScaleDisplayRecognizer.find(gray, width, height, "XXX.XX")
+        val analysis = ScaleDisplayRecognizer.analyze(gray, width, height, "XXX.XX")
+        val result = analysis.detection
+        val candidateSummary = analysis.candidates
+            .filter { it.height >= 20 }
+            .sortedWith(compareBy({ it.top }, { it.left }))
+            .take(80)
+            .joinToString { box ->
+                "${box.digit}@${box.left},${box.top},${box.width}x${box.height}:${"%.2f".format(java.util.Locale.ROOT, box.confidence)}"
+            }
 
-        assertNotNull("Expected the combined detector and template matcher to find the weight", result)
+        assertNotNull(
+            "Expected the combined detector and template matcher to find the weight. " +
+                "Candidate count=${analysis.candidates.size}; candidates=$candidateSummary",
+            result
+        )
         assertEquals(12.34, result!!.value, .0001)
         assertEquals("1234", result.digits)
         assertEquals(4, result.boxes.size)
