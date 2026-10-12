@@ -177,39 +177,30 @@ internal object ScaleDisplayRecognizer {
         var smallBoxes = emptyList<DigitBox>()
 
         if (smallSlots > 0) {
-            val hasLargerRow = rows.any { it.height > primary.height * 1.25f }
-            if (!hasLargerRow) {
-                // When all visible digits are reduced-size, the configured template says
-                // that those positions are meaningful (for example a weight below 1 kg).
-                if (mainBoxes.size < smallSlots) return null
-                smallBoxes = mainBoxes.takeLast(smallSlots)
-                mainBoxes = emptyList()
-            } else {
-                if (mainBoxes.size > upperSlots) return null
-                val rightEdge = mainBoxes.lastOrNull()?.right ?: return null
-                val baseline = mainBoxes.map { it.bottom }.average().toFloat()
-                val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
-                val smallCandidates = candidates.filter { box ->
-                    val ratio = box.height / referenceHeight
-                    ratio in .28f.. .82f &&
-                        box.left >= rightEdge - referenceHeight * .18f &&
-                        box.left - rightEdge <= referenceHeight * .85f &&
-                        abs(box.bottom - baseline) <= referenceHeight * .35f
-                }
-                val smallRows = findRows(smallCandidates)
-                    .filter { row ->
-                        row.boxes.size >= smallSlots &&
-                            row.height in (referenceHeight * .28f)..(referenceHeight * .82f) &&
-                            row.boxes.first().left - rightEdge <= referenceHeight * .85f
-                    }
-                    .sortedBy { row ->
-                        val gap = max(0, row.boxes.first().left - rightEdge)
-                        val sizePenalty = abs(row.height / referenceHeight - .55f)
-                        gap.toFloat() / referenceHeight + sizePenalty * .35f - row.confidence * .15f
-                    }
-                val smallRow = smallRows.firstOrNull() ?: return null
-                smallBoxes = smallRow.boxes.sortedBy { it.left }.take(smallSlots)
+            if (mainBoxes.size > upperSlots) return null
+            val rightEdge = mainBoxes.lastOrNull()?.right ?: return null
+            val baseline = mainBoxes.map { it.bottom }.average().toFloat()
+            val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
+            val smallCandidates = candidates.filter { box ->
+                val ratio = box.height / referenceHeight
+                ratio in .28f.. .82f &&
+                    box.left >= rightEdge - referenceHeight * .18f &&
+                    box.left - rightEdge <= referenceHeight * .85f &&
+                    abs(box.bottom - baseline) <= referenceHeight * .35f
             }
+            val smallRows = findRows(smallCandidates)
+                .filter { row ->
+                    row.boxes.size >= smallSlots &&
+                        row.height in (referenceHeight * .28f)..(referenceHeight * .82f) &&
+                        row.boxes.first().left - rightEdge <= referenceHeight * .85f
+                }
+                .sortedBy { row ->
+                    val gap = max(0, row.boxes.first().left - rightEdge)
+                    val sizePenalty = abs(row.height / referenceHeight - .55f)
+                    gap.toFloat() / referenceHeight + sizePenalty * .35f - row.confidence * .15f
+                }
+            val smallRow = smallRows.firstOrNull() ?: return null
+            smallBoxes = smallRow.boxes.sortedBy { it.left }.take(smallSlots)
         } else if (mainBoxes.size > upperSlots) {
             // A template that expects fewer full-size positions must not silently crop
             // a longer row and save a potentially incorrect number.
