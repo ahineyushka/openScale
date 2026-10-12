@@ -897,27 +897,23 @@ internal object ScaleDisplayRecognizer {
         val kept = ArrayList<DigitBox>()
         for (candidate in ordered) {
             val duplicate = kept.any { previous ->
-                // A broad false box for one digit must not suppress a real, differently
-                // classified digit merely because their rectangles overlap. Suppress only
-                // same-label hypotheses whose actual bounding boxes are near-identical.
-                if (candidate.digit != previous.digit) {
-                    false
-                } else {
-                    val intersectionWidth = max(
-                        0,
-                        min(candidate.right, previous.right) - max(candidate.left, previous.left)
-                    )
-                    val intersectionHeight = max(
-                        0,
-                        min(candidate.bottom, previous.bottom) - max(candidate.top, previous.top)
-                    )
-                    val intersection = intersectionWidth.toFloat() * intersectionHeight
-                    val candidateArea = candidate.width.toFloat() * candidate.height
-                    val previousArea = previous.width.toFloat() * previous.height
-                    val union = candidateArea + previousArea - intersection
-                    val overlap = if (union > 0f) intersection / union else 0f
-                    overlap >= .58f
-                }
+                // Suppress near-identical rectangles even if a shifted scan classified the
+                // same physical glyph differently. A broad false rectangle has low IoU and
+                // cannot erase a tighter real digit box.
+                val intersectionWidth = max(
+                    0,
+                    min(candidate.right, previous.right) - max(candidate.left, previous.left)
+                )
+                val intersectionHeight = max(
+                    0,
+                    min(candidate.bottom, previous.bottom) - max(candidate.top, previous.top)
+                )
+                val intersection = intersectionWidth.toFloat() * intersectionHeight
+                val candidateArea = candidate.width.toFloat() * candidate.height
+                val previousArea = previous.width.toFloat() * previous.height
+                val union = candidateArea + previousArea - intersection
+                val overlap = if (union > 0f) intersection / union else 0f
+                overlap >= .66f
             }
             if (!duplicate) kept.add(candidate)
             if (kept.size >= limit) break
