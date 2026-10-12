@@ -294,8 +294,10 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val digits = ScaleDisplayRecognizer.find(gray, width, height)?.digits
+                val detection = ScaleDisplayRecognizer.find(gray, width, height)
+                val digits = detection?.digits
                 runOnUiThread {
+                    photoPreview.setImageBitmap(detection?.let { drawDetectionBox(bitmap, it) } ?: bitmap)
                     if (digits == null) {
                         status.text = getString(com.health.openscale.R.string.camera_not_recognized)
                     } else {
@@ -311,6 +313,21 @@ class CameraScaleScanActivity : ComponentActivity() {
                 runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
             }
         }
+    }
+
+    private fun drawDetectionBox(bitmap: Bitmap, detection: ScaleDisplayRecognizer.Detection): Bitmap {
+        val marked = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(marked)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.GREEN
+            style = Paint.Style.STROKE
+            strokeWidth = maxOf(3f, bitmap.width / 250f)
+        }
+        canvas.drawRect(
+            detection.left.toFloat(), detection.top.toFloat(),
+            detection.right.toFloat(), detection.bottom.toFloat(), paint
+        )
+        return marked
     }
 
     private fun processSelectedPhoto(uri: Uri) {
@@ -339,10 +356,13 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val digits = ScaleDisplayRecognizer.find(gray, width, height)?.digits
+                val detection = ScaleDisplayRecognizer.find(gray, width, height)
+                val digits = detection?.digits
                 runOnUiThread {
-                    // Display the exact image that was analyzed, not the stale camera preview.
-                    photoPreview.setImageBitmap(bitmap)
+                    // Keep the original bitmap for rotation; show a copy with the detected region outlined.
+                    selectedPhoto = bitmap
+                    rotatePhoto.visibility = View.VISIBLE
+                    photoPreview.setImageBitmap(detection?.let { drawDetectionBox(bitmap, it) } ?: bitmap)
                     photoPreview.visibility = View.VISIBLE
                     preview.visibility = View.GONE
                     if (digits == null) {
