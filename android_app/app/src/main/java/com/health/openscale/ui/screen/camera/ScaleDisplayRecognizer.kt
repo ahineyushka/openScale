@@ -52,10 +52,17 @@ internal object ScaleDisplayRecognizer {
 
     // These corner samples estimate the unlit background inside the same character cell.
     private val backgroundZones = arrayOf(
-        floatArrayOf(.02f, .02f, .18f, .13f),
-        floatArrayOf(.82f, .02f, .98f, .13f),
-        floatArrayOf(.02f, .87f, .18f, .98f),
-        floatArrayOf(.82f, .87f, .98f, .98f)
+        floatArrayOf(.04f, .26f, .12f, .39f),
+        floatArrayOf(.88f, .26f, .96f, .39f),
+        floatArrayOf(.04f, .62f, .12f, .75f),
+        floatArrayOf(.88f, .62f, .96f, .75f)
+    )
+
+    // The open spaces between horizontal bars should look like the background. This rejects
+    // solid icons, printed stars and other shapes that accidentally light up seven sample zones.
+    private val gapZones = arrayOf(
+        floatArrayOf(.42f, .23f, .58f, .37f),
+        floatArrayOf(.42f, .63f, .58f, .77f)
     )
 
     data class DigitBox(
@@ -244,7 +251,7 @@ internal object ScaleDisplayRecognizer {
         height: Int
     ): List<DigitBox> {
         val candidates = ArrayList<DigitBox>()
-        val segmentMeans = FloatArray(11)
+        val segmentMeans = FloatArray(13)
         val digitOut = CharArray(1)
         val ratios = floatArrayOf(.38f, .44f, .50f, .56f, .62f)
         val minHeight = max(9, min(width, height) / 50)
@@ -254,8 +261,8 @@ internal object ScaleDisplayRecognizer {
         while (digitHeight <= maxHeight) {
             // Coarse scanning plus score-based suppression keeps the whole-frame search
             // tractable for live camera frames without assuming a fixed display location.
-            val stepX = max(2, digitHeight / 4)
-            val stepY = max(2, digitHeight / 4)
+            val stepX = max(2, digitHeight / 5)
+            val stepY = max(2, digitHeight / 5)
             for (ratio in ratios) {
                 val digitWidth = max(8, (digitHeight * ratio).roundToInt())
                 if (digitWidth > width || digitHeight > height) continue
@@ -267,7 +274,7 @@ internal object ScaleDisplayRecognizer {
                             integral, width, height, x, y, digitWidth, digitHeight,
                             segmentMeans, digitOut
                         )
-                        if (confidence >= .45f) {
+                        if (confidence >= .42f) {
                             candidates.add(
                                 DigitBox(
                                     digitOut[0], x, y, x + digitWidth, y + digitHeight, confidence
@@ -281,12 +288,12 @@ internal object ScaleDisplayRecognizer {
             }
             digitHeight = max(digitHeight + 2, (digitHeight * 1.16f).roundToInt())
             if (candidates.size > 3500) {
-                val pruned = suppressCandidates(candidates, 450)
+                val pruned = suppressCandidates(candidates, 700)
                 candidates.clear()
                 candidates.addAll(pruned)
             }
         }
-        return suppressCandidates(candidates, 180)
+        return suppressCandidates(candidates, 360)
     }
 
     private fun scoreCandidate(
@@ -320,7 +327,18 @@ internal object ScaleDisplayRecognizer {
                 y + max((z[3] * digitHeight).toInt(), (z[1] * digitHeight).toInt() + 1)
             )
         }
+        for (i in gapZones.indices) {
+            val z = gapZones[i]
+            samples[11 + i] = mean(
+                integral, width, height,
+                x + (z[0] * digitWidth).toInt(),
+                y + (z[1] * digitHeight).toInt(),
+                x + max((z[2] * digitWidth).toInt(), (z[0] * digitWidth).toInt() + 1),
+                y + max((z[3] * digitHeight).toInt(), (z[1] * digitHeight).toInt() + 1)
+            )
+        }
         val background = (samples[7] + samples[8] + samples[9] + samples[10]) * .25f
+        val gapDeviation = abs((samples[11] + samples[12]) * .5f - background)
         for (i in 0..6) samples[i] -= background
 
         var best = 0f
@@ -350,7 +368,8 @@ internal object ScaleDisplayRecognizer {
                 }
                 val fit = (1f - sqrt(error / 7f) / activeMean).coerceIn(0f, 1f)
                 val contrast = ((activeMean - 5f) / 27f).coerceIn(0f, 1f)
-                val score = fit * contrast
+                val gapFit = (1f - gapDeviation / max(1f, activeMean * .80f)).coerceIn(0f, 1f)
+                val score = fit * contrast * gapFit
                 if (score > best) {
                     best = score
                     bestDigit = digitChars[digitIndex]
@@ -421,8 +440,8 @@ internal object ScaleDisplayRecognizer {
                 val dx = abs((candidate.left + candidate.right) - (previous.left + previous.right)) / 2f
                 val dy = abs((candidate.top + candidate.bottom) - (previous.top + previous.bottom)) / 2f
                 heightRatio < 1.38f &&
-                    dx < max(4f, min(candidate.height, previous.height) * .30f) &&
-                    dy < max(3f, min(candidate.height, previous.height) * .22f)
+                    dx < max(4f, min(candidate.height, previous.height) * .46f) &&
+                    dy < max(3f, min(candidate.height, previous.height) * .28f)
             }
             if (!duplicate) kept.add(candidate)
             if (kept.size >= limit) break
