@@ -571,14 +571,14 @@ internal object ScaleDisplayRecognizer {
         // vertical step misses horizontal bars when the candidate cell is shifted by only
         // a few pixels, which made digits 2/3/4 look like a narrow "1".
         val ratios = floatArrayOf(.30f, .34f, .38f, .42f, .46f, .50f, .54f)
-        val minHeight = max(9, min(width, height) / 50)
+        val minHeight = max(12, min(width, height) / 45)
         val maxHeight = min((height * .72f).toInt(), (width * .65f).toInt()).coerceAtLeast(minHeight)
         var digitHeight = minHeight
 
         while (digitHeight <= maxHeight) {
             // Search more densely than the first prototype. Template matching later rejects
             // false candidates, so candidate discovery should favor recall over precision.
-            val stepX = max(2, digitHeight / 6)
+            val stepX = max(2, digitHeight / 12)
             val stepY = max(1, digitHeight / 10)
             for (ratio in ratios) {
                 val digitWidth = max(8, (digitHeight * ratio).roundToInt())

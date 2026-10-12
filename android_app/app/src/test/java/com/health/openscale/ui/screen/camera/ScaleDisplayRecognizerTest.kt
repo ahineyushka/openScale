@@ -48,7 +48,10 @@ class ScaleDisplayRecognizerTest {
                 "Missing digit $digit for polarity background=$background, segment=$segment. " +
                     "Candidates=" + candidates
                         .filter { abs((it.left + it.right) / 2 - (position.first + digitWidth / 2)) < 24 }
-                        .joinToString { "\${it.digit}@\${it.left},\${it.top},\${it.width}x\${it.height}:\${it.confidence}" },
+                        .joinToString { box ->
+                            box.digit.toString() + "@" + box.left + "," + box.top + "," +
+                                box.width + "x" + box.height + ":" + box.confidence
+                        },
                 candidates.any {
                     it.digit == digit &&
                         abs((it.left + it.right) / 2 - (position.first + digitWidth / 2)) <= 9 &&
