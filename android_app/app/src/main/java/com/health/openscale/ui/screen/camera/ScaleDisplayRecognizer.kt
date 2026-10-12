@@ -414,7 +414,10 @@ internal object ScaleDisplayRecognizer {
                             val averageHeight = sequence.map { it.height }.average().toFloat()
                             if (!plausibleRow(sequence, averageHeight)) continue
                             val key = sequence.joinToString(",") {
-                                "\${it.left / 4}:\${it.top / 4}:\${it.width / 4}:\${it.height / 4}"
+                                (it.left / 4).toString() + ":" +
+                                    (it.top / 4).toString() + ":" +
+                                    (it.width / 4).toString() + ":" +
+                                    (it.height / 4).toString()
                             }
                             if (!seen.add(key)) continue
                             val averageConfidence = sequence.map { it.confidence }.average().toFloat()
