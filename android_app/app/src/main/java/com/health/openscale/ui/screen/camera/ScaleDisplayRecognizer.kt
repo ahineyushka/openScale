@@ -431,15 +431,18 @@ internal object ScaleDisplayRecognizer {
                     if (referenceHeight <= 0f) continue
                     val rightEdge = mainBoxes.last().right
                     val baseline = mainBoxes.map { it.bottom }.average().toFloat()
-                    val smallCandidates = candidates.filter { box ->
-                        val ratio = box.height / referenceHeight
-                        val gap = box.left - rightEdge
+                    // Rows are already grouped once from all candidates. Reuse those groups here
+                    // rather than re-running the O(n²) grouping pass for every main-row hypothesis.
+                    val smallRows = rows.filter { smallRow ->
+                        val first = smallRow.boxes.firstOrNull() ?: return@filter false
+                        val ratio = smallRow.height / referenceHeight
+                        val gap = first.left - rightEdge
+                        val smallBaseline = smallRow.boxes.map { it.bottom }.average().toFloat()
                         ratio in .28f.. .82f &&
                             gap >= -referenceHeight * .12f &&
                             gap <= referenceHeight * .72f &&
-                            abs(box.bottom - baseline) <= referenceHeight * .32f
+                            abs(smallBaseline - baseline) <= referenceHeight * .32f
                     }
-                    val smallRows = findRows(smallCandidates)
                     for (smallRow in smallRows) {
                         val smallSorted = smallRow.boxes.sortedBy { it.left }
                         val required = template.smallFractionSlots
