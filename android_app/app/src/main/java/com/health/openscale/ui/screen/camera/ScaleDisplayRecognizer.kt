@@ -135,6 +135,50 @@ internal object ScaleDisplayRecognizer {
         format.substringAfter('.', "").count { it == 'X' || it == 'x' }
 
     /**
+     * Returns the detector's raw single-character candidates without trying to interpret
+     * them as a complete weight. False positives are expected at this stage; later stages
+     * use the selected template and sequence geometry to rank and reject them.
+     */
+    fun findDigitCandidates(
+        gray: ByteArray,
+        width: Int,
+        height: Int,
+        maxSide: Int = 800
+    ): List<DigitBox> {
+        if (width < 40 || height < 40 || gray.size < width * height) return emptyList()
+        val longestSide = max(width, height)
+        val resize = longestSide.toFloat() / maxSide.coerceAtLeast(160)
+        val smallWidth = if (resize > 1f) (width / resize).roundToInt().coerceAtLeast(1) else width
+        val smallHeight = if (resize > 1f) (height / resize).roundToInt().coerceAtLeast(1) else height
+        val smallGray = if (smallWidth == width && smallHeight == height) {
+            gray.copyOf(width * height)
+        } else {
+            ByteArray(smallWidth * smallHeight).also { out ->
+                for (y in 0 until smallHeight) {
+                    val sourceY = (y.toFloat() * height / smallHeight).toInt().coerceAtMost(height - 1)
+                    for (x in 0 until smallWidth) {
+                        val sourceX = (x.toFloat() * width / smallWidth).toInt().coerceAtMost(width - 1)
+                        out[y * smallWidth + x] = gray[sourceY * width + sourceX]
+                    }
+                }
+            }
+        }
+        val candidates = findCandidates(buildIntegral(smallGray, smallWidth, smallHeight), smallWidth, smallHeight)
+        val scaleX = width.toFloat() / smallWidth
+        val scaleY = height.toFloat() / smallHeight
+        return candidates.map { box ->
+            DigitBox(
+                box.digit,
+                (box.left * scaleX).roundToInt().coerceIn(0, width - 1),
+                (box.top * scaleY).roundToInt().coerceIn(0, height - 1),
+                (box.right * scaleX).roundToInt().coerceIn(1, width),
+                (box.bottom * scaleY).roundToInt().coerceIn(1, height),
+                box.confidence
+            )
+        }
+    }
+
+    /**
      * Finds characters and applies the user-selected template.
      *
      * maxSide limits work for live camera frames. Still photos keep more pixels by default

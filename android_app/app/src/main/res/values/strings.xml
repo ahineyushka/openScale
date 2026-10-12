@@ -633,6 +633,7 @@
     <string name="camera_rotate_photo">Rotate 90°</string>
     <string name="camera_select_photo_hint">Select a photo to analyze</string>
     <string name="camera_processing_photo">Analyzing selected photo…</string>
+    <string name="camera_candidate_count">Candidate digit rectangles: %1$d (unfiltered)</string>
     <string name="camera_not_recognized">Display not recognized</string>
     <string name="camera_photo_error">Cannot read this photo</string>
     <string name="camera_align_display">Keep the scale display visible in the camera preview</string>

@@ -26,6 +26,9 @@ jobs:
           cache: gradle
           cache-dependency-path: android_app/**/*.gradle*
 
+      - name: Test camera digit candidate detector
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 

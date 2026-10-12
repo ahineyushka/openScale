@@ -318,17 +318,42 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val detection = ScaleDisplayRecognizer.find(gray, width, height, savedFormat)
+                val candidates = ScaleDisplayRecognizer.findDigitCandidates(gray, width, height)
                 runOnUiThread {
-                    photoPreview.setImageBitmap(detection?.let { drawDetectionBoxes(bitmap, it) } ?: bitmap)
-                    status.text = detection?.let { recognizedStatus(it.value) }
-                        ?: getString(com.health.openscale.R.string.camera_not_recognized)
+                    photoPreview.setImageBitmap(drawCandidateBoxes(bitmap, candidates))
+                    status.text = getString(com.health.openscale.R.string.camera_candidate_count, candidates.size)
                     confirm.visibility = View.GONE
                 }
             } catch (_: Exception) {
                 runOnUiThread { status.text = getString(com.health.openscale.R.string.camera_photo_error) }
             }
         }
+    }
+
+    private fun drawCandidateBoxes(bitmap: Bitmap, candidates: List<ScaleDisplayRecognizer.DigitBox>): Bitmap {
+        val marked = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(marked)
+        val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.YELLOW
+            style = Paint.Style.STROKE
+            strokeWidth = maxOf(2f, bitmap.width / 500f)
+        }
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.YELLOW
+            style = Paint.Style.FILL
+            textSize = maxOf(10f, bitmap.width / 45f)
+        }
+        for (box in candidates) {
+            canvas.drawRect(
+                box.left.toFloat(), box.top.toFloat(),
+                box.right.toFloat(), box.bottom.toFloat(), boxPaint
+            )
+            canvas.drawText(
+                box.digit.toString(), box.left.toFloat(),
+                (box.top - 2).coerceAtLeast(textPaint.textSize.toInt()).toFloat(), textPaint
+            )
+        }
+        return marked
     }
 
     private fun drawDetectionBoxes(bitmap: Bitmap, detection: ScaleDisplayRecognizer.Detection): Bitmap {
@@ -396,16 +421,15 @@ class CameraScaleScanActivity : ComponentActivity() {
                         (0.587f * ((p shr 8) and 0xff)) +
                         (0.114f * (p and 0xff))).toInt().coerceIn(0, 255).toByte()
                 }
-                val detection = ScaleDisplayRecognizer.find(gray, width, height, savedFormat)
+                val candidates = ScaleDisplayRecognizer.findDigitCandidates(gray, width, height)
                 runOnUiThread {
-                    // Keep the original bitmap for rotation; highlight only characters selected by the template.
+                    // Stage 1: visualize every probable digit box; no sequence is selected yet.
                     selectedPhoto = bitmap
                     rotatePhoto.visibility = View.VISIBLE
-                    photoPreview.setImageBitmap(detection?.let { drawDetectionBoxes(bitmap, it) } ?: bitmap)
+                    photoPreview.setImageBitmap(drawCandidateBoxes(bitmap, candidates))
                     photoPreview.visibility = View.VISIBLE
                     preview.visibility = View.GONE
-                    status.text = detection?.let { recognizedStatus(it.value) }
-                        ?: getString(com.health.openscale.R.string.camera_not_recognized)
+                    status.text = getString(com.health.openscale.R.string.camera_candidate_count, candidates.size)
                     confirm.visibility = View.GONE
                 }
             } catch (_: Exception) {
