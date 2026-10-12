@@ -147,7 +147,9 @@ class CameraScaleScanActivity : ComponentActivity() {
                 for (box in detection.boxes) {
                     canvas.drawRect(box.left * sx, box.top * sy, box.right * sx, box.bottom * sy, boxPaint)
                 }
-                canvas.drawCircle(detection.decimalX * sx, detection.decimalY * sy, 5f, dotPaint)
+                if (detection.hasDecimal) {
+                    canvas.drawCircle(detection.decimalX * sx, detection.decimalY * sy, 5f, dotPaint)
+                }
             }
         }
         previewContainer.addView(detectionOverlay, FrameLayout.LayoutParams(-1, -1))
@@ -347,10 +349,12 @@ class CameraScaleScanActivity : ComponentActivity() {
             color = Color.GREEN
             style = Paint.Style.FILL
         }
-        canvas.drawCircle(
-            detection.decimalX.toFloat(), detection.decimalY.toFloat(),
-            maxOf(3f, bitmap.width / 400f), dotPaint
-        )
+        if (detection.hasDecimal) {
+            canvas.drawCircle(
+                detection.decimalX.toFloat(), detection.decimalY.toFloat(),
+                maxOf(3f, bitmap.width / 400f), dotPaint
+            )
+        }
         return marked
     }
 

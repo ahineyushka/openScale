@@ -83,6 +83,7 @@ internal object ScaleDisplayRecognizer {
         val boxes: List<DigitBox>,
         val decimalX: Int,
         val decimalY: Int,
+        val hasDecimal: Boolean,
         val confidence: Float
     )
 
@@ -154,8 +155,9 @@ internal object ScaleDisplayRecognizer {
             chosen.digits,
             chosen.value,
             scaledBoxes,
-            (chosen.decimalX * scaleX).roundToInt().coerceIn(0, width - 1),
-            (chosen.decimalY * scaleY).roundToInt().coerceIn(0, height - 1),
+            if (chosen.hasDecimal) (chosen.decimalX * scaleX).roundToInt().coerceIn(0, width - 1) else -1,
+            if (chosen.hasDecimal) (chosen.decimalY * scaleY).roundToInt().coerceIn(0, height - 1) else -1,
+            chosen.hasDecimal,
             chosen.confidence
         )
     }
@@ -166,6 +168,7 @@ internal object ScaleDisplayRecognizer {
         val boxes: List<DigitBox>,
         val decimalX: Int,
         val decimalY: Int,
+        val hasDecimal: Boolean,
         val confidence: Float
     )
 
@@ -179,27 +182,30 @@ internal object ScaleDisplayRecognizer {
         val decimals = decimalPlaces(format)
         if (upperSlots == 0 && smallSlots == 0) return null
 
-        val primary = rows.maxByOrNull { it.score } ?: return null
-        var mainBoxes = primary.boxes.sortedBy { it.left }
+        val minimumMainDigits = max(1, decimals - smallSlots + 1)
+        val compatibleRows = rows.filter { row ->
+            row.boxes.size in minimumMainDigits..upperSlots
+        }.sortedByDescending { it.score }
+        val primary = compatibleRows.firstOrNull() ?: return null
+        val mainBoxes = primary.boxes.sortedBy { it.left }
         var smallBoxes = emptyList<DigitBox>()
 
         if (smallSlots > 0) {
-            if (mainBoxes.size > upperSlots) return null
             val rightEdge = mainBoxes.lastOrNull()?.right ?: return null
             val baseline = mainBoxes.map { it.bottom }.average().toFloat()
             val referenceHeight = mainBoxes.map { it.height }.average().toFloat()
             val smallCandidates = candidates.filter { box ->
                 val ratio = box.height / referenceHeight
                 ratio in .28f.. .82f &&
-                    box.left >= rightEdge - referenceHeight * .18f &&
-                    box.left - rightEdge <= referenceHeight * .85f &&
-                    abs(box.bottom - baseline) <= referenceHeight * .35f
+                    box.left >= rightEdge - referenceHeight * .12f &&
+                    box.left - rightEdge <= referenceHeight * .70f &&
+                    abs(box.bottom - baseline) <= referenceHeight * .28f
             }
             val smallRows = findRows(smallCandidates)
                 .filter { row ->
                     row.boxes.size >= smallSlots &&
                         row.height in (referenceHeight * .28f)..(referenceHeight * .82f) &&
-                        row.boxes.first().left - rightEdge <= referenceHeight * .85f
+                        row.boxes.first().left - rightEdge <= referenceHeight * .70f
                 }
                 .sortedBy { row ->
                     val gap = max(0, row.boxes.first().left - rightEdge)
@@ -208,12 +214,7 @@ internal object ScaleDisplayRecognizer {
                 }
             val smallRow = smallRows.firstOrNull() ?: return null
             smallBoxes = smallRow.boxes.sortedBy { it.left }.take(smallSlots)
-        } else if (mainBoxes.size > upperSlots) {
-            // A template that expects fewer full-size positions must not silently crop
-            // a longer row and save a potentially incorrect number.
-            return null
         }
-
         if (mainBoxes.size > upperSlots || smallBoxes.size < smallSlots) return null
         val selected = (mainBoxes + smallBoxes).distinctBy {
             ((it.left + it.right) / 2) / 3 to ((it.top + it.bottom) / 2) / 3
@@ -225,11 +226,14 @@ internal object ScaleDisplayRecognizer {
         var divisor = 1.0
         repeat(decimals) { divisor *= 10.0 }
         val value = integerValue.toDouble() / divisor
+        val hasDecimal = format.contains('.')
         val boundaryIndex = selected.size - decimals
-        val decimalX = if (boundaryIndex > 0) {
-            (selected[boundaryIndex - 1].right + selected[boundaryIndex].left) / 2
-        } else {
-            (selected.first().left - max(2, selected.first().width / 5)).coerceAtLeast(0)
+        val decimalX = when {
+            !hasDecimal -> -1
+            decimals == 0 -> selected.last().right + max(2, selected.last().width / 5)
+            boundaryIndex <= 0 -> (selected.first().left - max(2, selected.first().width / 5)).coerceAtLeast(0)
+            boundaryIndex >= selected.size -> selected.last().right + max(2, selected.last().width / 5)
+            else -> (selected[boundaryIndex - 1].right + selected[boundaryIndex].left) / 2
         }
         val largeBoxes = if (mainBoxes.isNotEmpty()) mainBoxes else selected
         val baseline = largeBoxes.map { it.bottom }.average().toInt()
@@ -241,6 +245,7 @@ internal object ScaleDisplayRecognizer {
             selected,
             decimalX,
             decimalY,
+            hasDecimal,
             selected.map { it.confidence }.average().toFloat()
         )
     }
@@ -253,7 +258,7 @@ internal object ScaleDisplayRecognizer {
         val candidates = ArrayList<DigitBox>()
         val segmentMeans = FloatArray(13)
         val digitOut = CharArray(1)
-        val ratios = floatArrayOf(.38f, .44f, .50f, .56f, .62f)
+        val ratios = floatArrayOf(.32f, .37f, .42f, .47f, .52f)
         val minHeight = max(9, min(width, height) / 50)
         val maxHeight = min((height * .72f).toInt(), (width * .65f).toInt()).coerceAtLeast(minHeight)
         var digitHeight = minHeight
@@ -261,8 +266,8 @@ internal object ScaleDisplayRecognizer {
         while (digitHeight <= maxHeight) {
             // Coarse scanning plus score-based suppression keeps the whole-frame search
             // tractable for live camera frames without assuming a fixed display location.
-            val stepX = max(2, digitHeight / 5)
-            val stepY = max(2, digitHeight / 5)
+            val stepX = max(2, digitHeight / 4)
+            val stepY = max(2, digitHeight / 4)
             for (ratio in ratios) {
                 val digitWidth = max(8, (digitHeight * ratio).roundToInt())
                 if (digitWidth > width || digitHeight > height) continue
@@ -274,7 +279,7 @@ internal object ScaleDisplayRecognizer {
                             integral, width, height, x, y, digitWidth, digitHeight,
                             segmentMeans, digitOut
                         )
-                        if (confidence >= .42f) {
+                        if (confidence >= .38f) {
                             candidates.add(
                                 DigitBox(
                                     digitOut[0], x, y, x + digitWidth, y + digitHeight, confidence
@@ -356,20 +361,26 @@ internal object ScaleDisplayRecognizer {
                 val activeMean = activeSum / activeCount
                 if (activeMean < 7f) continue
 
-                var error = 0f
+                var activeError = 0f
+                var inactiveEnergy = 0f
+                var inactiveCount = 0
                 for (segment in 0..6) {
                     val signal = samples[segment] * polarity
-                    error += if ((mask and (1 shl segment)) != 0) {
+                    if ((mask and (1 shl segment)) != 0) {
                         val delta = signal - activeMean
-                        delta * delta
+                        activeError += delta * delta
                     } else {
-                        signal * signal
+                        inactiveEnergy += signal * signal
+                        inactiveCount++
                     }
                 }
-                val fit = (1f - sqrt(error / 7f) / activeMean).coerceIn(0f, 1f)
-                val contrast = ((activeMean - 5f) / 27f).coerceIn(0f, 1f)
+                val activeDeviation = sqrt(activeError / activeCount.coerceAtLeast(1))
+                val inactiveDeviation = if (inactiveCount > 0) sqrt(inactiveEnergy / inactiveCount) else 0f
+                val activeFit = (1f - activeDeviation / max(1f, activeMean * .85f)).coerceIn(0f, 1f)
+                val inactiveFit = (1f - inactiveDeviation / max(1f, activeMean * .60f)).coerceIn(0f, 1f)
+                val contrast = ((activeMean - 7f) / 30f).coerceIn(0f, 1f)
                 val gapFit = (1f - gapDeviation / max(1f, activeMean * .80f)).coerceIn(0f, 1f)
-                val score = fit * contrast * gapFit
+                val score = activeFit * inactiveFit * contrast * gapFit
                 if (score > best) {
                     best = score
                     bestDigit = digitChars[digitIndex]
@@ -394,19 +405,31 @@ internal object ScaleDisplayRecognizer {
 
             var chain = ArrayList<DigitBox>()
             fun flush() {
-                if (chain.isEmpty()) return
-                val sorted = chain.sortedBy { it.left }
-                val averageHeight = sorted.map { it.height }.average().toFloat()
-                val key = (sorted.first().left / 7).toString() + ":" +
-                    (sorted.last().right / 7).toString() + ":" + (averageHeight / 4).toInt()
-                if (!seen.add(key)) {
-                    chain = ArrayList()
-                    return
+                if (chain.size >= 2) {
+                    val sorted = chain.sortedBy { it.left }
+                    for (from in sorted.indices) {
+                        val maxTo = min(sorted.lastIndex, from + 6)
+                        for (to in from + 1..maxTo) {
+                            val sequence = sorted.subList(from, to + 1).toList()
+                            val averageHeight = sequence.map { it.height }.average().toFloat()
+                            if (!plausibleRow(sequence, averageHeight)) continue
+                            val key = sequence.joinToString(",") {
+                                "\${it.left / 4}:\${it.top / 4}:\${it.width / 4}:\${it.height / 4}"
+                            }
+                            if (!seen.add(key)) continue
+                            val averageConfidence = sequence.map { it.confidence }.average().toFloat()
+                            val pitchScore = rowPitchScore(sequence)
+                            val sizeScore = sequence.map { it.width.toFloat() / it.height }.average().toFloat()
+                            val widthPrior = (1f - abs(sizeScore - .43f) / .40f).coerceIn(0f, 1f)
+                            val score = averageConfidence * 2f +
+                                min(sequence.size, 5) * .24f +
+                                pitchScore * .65f +
+                                widthPrior * .20f +
+                                ln(averageHeight.coerceAtLeast(1f)) * .25f
+                            result.add(DigitRow(sequence, averageHeight, averageConfidence, score))
+                        }
+                    }
                 }
-                val averageConfidence = sorted.map { it.confidence }.average().toFloat()
-                val score = averageConfidence * 1.5f +
-                    sorted.size * .42f + ln(averageHeight.coerceAtLeast(1f)) * .75f
-                result.add(DigitRow(sorted, averageHeight, averageConfidence, score))
                 chain = ArrayList()
             }
             for (box in aligned) {
@@ -416,8 +439,9 @@ internal object ScaleDisplayRecognizer {
                 }
                 val previous = chain.last()
                 val gap = box.left - previous.right
-                val gapLimit = max(5f, min(previous.height, box.height) * .72f)
-                if (gap <= gapLimit && gap >= -min(previous.height, box.height) * .25f) {
+                val localHeight = min(previous.height, box.height).toFloat()
+                val gapLimit = max(3f, localHeight * .45f)
+                if (gap <= gapLimit && gap >= -localHeight * .08f) {
                     chain.add(box)
                 } else {
                     flush()
@@ -427,6 +451,34 @@ internal object ScaleDisplayRecognizer {
             flush()
         }
         return result
+    }
+
+    private fun plausibleRow(sequence: List<DigitBox>, averageHeight: Float): Boolean {
+        if (sequence.size < 2 || averageHeight < 8f) return false
+        val bottom = sequence.map { it.bottom }.average().toFloat()
+        if (sequence.any {
+                abs(it.height - averageHeight) > max(2f, averageHeight * .20f) ||
+                    abs(it.bottom - bottom) > max(2f, averageHeight * .18f)
+            }) return false
+        if (sequence.any { (it.width.toFloat() / it.height) !in .24f.. .70f }) return false
+        val pitches = sequence.zipWithNext { left, right ->
+            (right.left + right.right) / 2f - (left.left + left.right) / 2f
+        }
+        if (pitches.any { it !in (averageHeight * .34f)..(averageHeight * 1.05f) }) return false
+        val meanPitch = pitches.average().toFloat()
+        val pitchDeviation = sqrt(pitches.map { (it - meanPitch) * (it - meanPitch) }.average()).toFloat()
+        return meanPitch > 0f && pitchDeviation / meanPitch < .38f
+    }
+
+    private fun rowPitchScore(sequence: List<DigitBox>): Float {
+        if (sequence.size < 2) return 0f
+        val pitches = sequence.zipWithNext { left, right ->
+            (right.left + right.right) / 2f - (left.left + left.right) / 2f
+        }
+        val meanPitch = pitches.average().toFloat()
+        if (meanPitch <= 0f) return 0f
+        val deviation = sqrt(pitches.map { (it - meanPitch) * (it - meanPitch) }.average()).toFloat()
+        return (1f - deviation / meanPitch).coerceIn(0f, 1f)
     }
 
     private fun suppressCandidates(candidates: List<DigitBox>, limit: Int): List<DigitBox> {
