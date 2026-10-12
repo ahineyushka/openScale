@@ -629,6 +629,7 @@
     <string name="camera_unit_title">Weight unit shown on the scale</string>
     <string name="camera_scan">Scan weight from display</string>
     <string name="camera_choose_photo">Choose photo (test)</string>
+    <string name="camera_rotate_photo">Rotate 90°</string>
     <string name="camera_select_photo_hint">Select a photo to analyze</string>
     <string name="camera_processing_photo">Analyzing selected photo…</string>
     <string name="camera_not_recognized">Display not recognized</string>
