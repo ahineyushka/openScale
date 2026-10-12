@@ -246,14 +246,16 @@ internal object ScaleDisplayRecognizer {
         val candidates = ArrayList<DigitBox>()
         val segmentMeans = FloatArray(11)
         val digitOut = CharArray(1)
-        val ratios = floatArrayOf(.36f, .41f, .46f, .51f, .56f, .62f)
-        val minHeight = max(14, min(width, height) / 38)
+        val ratios = floatArrayOf(.38f, .44f, .50f, .56f, .62f)
+        val minHeight = max(9, min(width, height) / 50)
         val maxHeight = min((height * .72f).toInt(), (width * .65f).toInt()).coerceAtLeast(minHeight)
         var digitHeight = minHeight
 
         while (digitHeight <= maxHeight) {
-            val stepX = max(1, digitHeight / 8)
-            val stepY = max(1, digitHeight / 7)
+            // Coarse scanning plus score-based suppression keeps the whole-frame search
+            // tractable for live camera frames without assuming a fixed display location.
+            val stepX = max(2, digitHeight / 4)
+            val stepY = max(2, digitHeight / 4)
             for (ratio in ratios) {
                 val digitWidth = max(8, (digitHeight * ratio).roundToInt())
                 if (digitWidth > width || digitHeight > height) continue
@@ -277,7 +279,7 @@ internal object ScaleDisplayRecognizer {
                     y += stepY
                 }
             }
-            digitHeight = max(digitHeight + 1, (digitHeight * 1.14f).roundToInt())
+            digitHeight = max(digitHeight + 2, (digitHeight * 1.16f).roundToInt())
             if (candidates.size > 3500) {
                 val pruned = suppressCandidates(candidates, 450)
                 candidates.clear()
