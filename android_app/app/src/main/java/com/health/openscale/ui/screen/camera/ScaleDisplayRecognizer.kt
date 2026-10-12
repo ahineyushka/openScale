@@ -441,7 +441,14 @@ internal object ScaleDisplayRecognizer {
                     if (mainGeometry <= 0f) continue
                     val mainConfidence = mainBoxes.map { it.confidence }.average().toFloat()
                     val lengthFit = length.toFloat() / template.maxLargeDigits.coerceAtLeast(1)
-                    val mainScore = mainConfidence * .62f + lengthFit * .26f + mainGeometry * .12f
+                    // Prefer a fuller sequence that fits the configured display, and use the
+                    // common width of non-one digits to reject narrow false "1" fragments.
+                    val widthFit = digitWidthConsistencyScore(mainBoxes)
+                    if (widthFit <= 0f) continue
+                    val mainScore = mainConfidence * .30f +
+                        lengthFit * .48f +
+                        mainGeometry * .12f +
+                        widthFit * .10f
 
                     if (template.smallFractionSlots == 0) {
                         val candidate = buildReading(mainBoxes, emptyList(), template) ?: continue
@@ -518,6 +525,40 @@ internal object ScaleDisplayRecognizer {
         val spacingConsistency = (1f - meanDeviation / .38f).coerceIn(0f, 1f)
         val spacingPlausibility = (1f - abs(meanGap - .16f) / .72f).coerceIn(0f, 1f)
         return spacingConsistency * .55f + spacingPlausibility * .45f
+    }
+
+    /**
+     * A display's full-size digits have a common cell width. If a candidate is labelled "1",
+     * its visible strokes may be much narrower than its cell; once a non-one neighbour is
+     * available, reject such cropped cells rather than treating each side stroke as a digit.
+     * An all-ones row is allowed because the number is already unambiguous without perfect boxes.
+     */
+    private fun digitWidthConsistencyScore(boxes: List<DigitBox>): Float {
+        if (boxes.size < 2) return 1f
+        val referenceWidths = boxes.filter { it.digit != '1' }
+            .map { it.width.toFloat() }
+            .sorted()
+        if (referenceWidths.isEmpty()) return 1f
+        val referenceWidth = if (referenceWidths.size % 2 == 1) {
+            referenceWidths[referenceWidths.size / 2]
+        } else {
+            (referenceWidths[referenceWidths.size / 2 - 1] +
+                referenceWidths[referenceWidths.size / 2]) / 2f
+        }
+        if (referenceWidth <= 0f) return 0f
+
+        var totalScore = 0f
+        for (box in boxes) {
+            val ratio = box.width / referenceWidth
+            if (box.digit == '1') {
+                // A real digit-1 box is inferred from neighbouring cells, not from its lit bar.
+                if (ratio < .62f || ratio > 1.55f) return 0f
+            } else if (ratio !in .68f..1.42f) {
+                return 0f
+            }
+            totalScore += (1f - abs(ratio - 1f) / .55f).coerceIn(0f, 1f)
+        }
+        return totalScore / boxes.size
     }
 
     private fun buildReading(

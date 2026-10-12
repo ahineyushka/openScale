@@ -177,7 +177,16 @@ class ScaleDisplayRecognizerTest {
                 "Candidate count=${analysis.candidates.size}; candidates=$candidateSummary",
             result
         )
-        assertEquals(12.34, result!!.value, .0001)
+        assertEquals(
+            "Wrong digit sequence: value=\${result?.value}, digits=\${result?.digits}, boxes=" +
+                result?.boxes?.joinToString { box ->
+                    box.digit.toString() + "@" + box.left + "," + box.top + "," +
+                        box.width + "x" + box.height + ":" + box.confidence
+                },
+            12.34,
+            result!!.value,
+            .0001
+        )
         assertEquals("1234", result.digits)
         assertEquals(4, result.boxes.size)
         assertTrue(result.hasDecimal)
