@@ -775,6 +775,7 @@ internal object ScaleDisplayRecognizer {
 
         var finalScore = 0f
         var finalDigit = digit1
+        var finalPolarity = polarity1
         val candidateScores = floatArrayOf(top1, top2, top3)
         val candidateMasks = intArrayOf(mask1, mask2, mask3)
         val candidatePolarities = intArrayOf(polarity1, polarity2, polarity3)
@@ -790,10 +791,46 @@ internal object ScaleDisplayRecognizer {
             if (score > finalScore) {
                 finalScore = score
                 finalDigit = candidateDigits[candidate]
+                finalPolarity = candidatePolarities[candidate]
             }
+        }
+        if (finalDigit == '1') {
+            // A single vertical stroke in a cropped window can mimic both B and C.
+            // A genuine seven-segment "1" has lit upper and lower pieces separated by a gap.
+            finalScore *= digitOneSeparationFit(
+                integral, width, height, x, y, digitWidth, digitHeight, background, finalPolarity
+            )
         }
         digitOut[0] = finalDigit
         return finalScore
+    }
+
+    private fun digitOneSeparationFit(
+        integral: IntArray,
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        digitWidth: Int,
+        digitHeight: Int,
+        background: Float,
+        polarity: Int
+    ): Float {
+        fun sample(left: Float, top: Float, right: Float, bottom: Float): Float {
+            val x1 = x + (left * digitWidth).toInt()
+            val y1 = y + (top * digitHeight).toInt()
+            val x2 = x + max((right * digitWidth).toInt(), (left * digitWidth).toInt() + 1)
+            val y2 = y + max((bottom * digitHeight).toInt(), (top * digitHeight).toInt() + 1)
+            return (mean(integral, width, height, x1, y1, x2, y2) - background) * polarity
+        }
+        val upper = sample(.66f, .18f, .83f, .39f)
+        val lower = sample(.66f, .61f, .83f, .82f)
+        val gap = sample(.66f, .43f, .83f, .57f)
+        val weakerVertical = min(upper, lower)
+        if (weakerVertical < 7f) return 0f
+        val gapFit = (1f - max(0f, gap) / max(1f, weakerVertical * .65f)).coerceIn(0f, 1f)
+        val balance = (weakerVertical / max(upper, lower)).coerceIn(0f, 1f)
+        return gapFit * balance
     }
 
     private fun continuityFit(samples: FloatArray, mask: Int, polarity: Int): Float {

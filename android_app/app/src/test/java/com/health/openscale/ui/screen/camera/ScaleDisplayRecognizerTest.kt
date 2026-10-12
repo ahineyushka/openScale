@@ -178,7 +178,7 @@ class ScaleDisplayRecognizerTest {
             result
         )
         assertEquals(
-            "Wrong digit sequence: value=\${result?.value}, digits=\${result?.digits}, boxes=" +
+            "Wrong digit sequence: value=${result?.value}, digits=${result?.digits}, boxes=" +
                 result?.boxes?.joinToString { box ->
                     box.digit.toString() + "@" + box.left + "," + box.top + "," +
                         box.width + "x" + box.height + ":" + box.confidence
