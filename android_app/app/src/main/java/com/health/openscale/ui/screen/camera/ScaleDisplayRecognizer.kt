@@ -40,6 +40,19 @@ internal object ScaleDisplayRecognizer {
      */
     fun find(gray: ByteArray, width: Int, height: Int): Detection? {
         if (width < 80 || height < 60 || gray.size < width * height) return null
+        // Search at <=320px on the longest side to keep the sliding-window scan lightweight.
+        val scale = maxOf(width, height).toFloat() / 320f
+        if (scale > 1f) {
+            val sw = (width / scale).toInt().coerceAtLeast(1)
+            val sh = (height / scale).toInt().coerceAtLeast(1)
+            val small = ByteArray(sw * sh)
+            for (y in 0 until sh) for (x in 0 until sw) {
+                small[y * sw + x] = gray[(y * scale).toInt() * width + (x * scale).toInt()]
+            }
+            val found = find(small, sw, sh) ?: return null
+            return Detection(found.digits, (found.left * scale).toInt(), (found.top * scale).toInt(),
+                (found.right * scale).toInt(), (found.bottom * scale).toInt(), found.score)
+        }
         var best: Detection? = null
         // Candidate windows are sized around the expected proportions of three digits.
         // Coarse-to-fine scanning keeps this lightweight without OpenCV/ML.
