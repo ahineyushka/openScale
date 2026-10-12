@@ -50,12 +50,45 @@ internal object ScaleDisplayRecognizer {
         floatArrayOf(.22f, .44f, .78f, .56f)
     )
 
-    // These corner samples estimate the unlit background inside the same character cell.
+    // Wide corner samples estimate the background without landing on active side segments.
     private val backgroundZones = arrayOf(
-        floatArrayOf(.04f, .26f, .12f, .39f),
-        floatArrayOf(.88f, .26f, .96f, .39f),
-        floatArrayOf(.04f, .62f, .12f, .75f),
-        floatArrayOf(.88f, .62f, .96f, .75f)
+        floatArrayOf(.02f, .02f, .18f, .13f),
+        floatArrayOf(.82f, .02f, .98f, .13f),
+        floatArrayOf(.02f, .87f, .18f, .98f),
+        floatArrayOf(.82f, .87f, .98f, .98f)
+    )
+
+    // Three samples along each segment reject isolated bright/dark marks that only hit one point.
+    private val segmentSampleZones: Array<FloatArray> = Array(21) { index ->
+        val segment = index / 3
+        val position = floatArrayOf(.28f, .50f, .72f)[index % 3]
+        val zone = segmentZones[segment]
+        if (segment == 0 || segment == 3 || segment == 6) {
+            floatArrayOf(
+                zone[0] + (zone[2] - zone[0]) * (position - .10f),
+                zone[1] + (zone[3] - zone[1]) * .25f,
+                zone[0] + (zone[2] - zone[0]) * (position + .10f),
+                zone[3] - (zone[3] - zone[1]) * .25f
+            )
+        } else {
+            floatArrayOf(
+                zone[0] + (zone[2] - zone[0]) * .25f,
+                zone[1] + (zone[3] - zone[1]) * (position - .10f),
+                zone[2] - (zone[2] - zone[0]) * .25f,
+                zone[1] + (zone[3] - zone[1]) * (position + .10f)
+            )
+        }
+    }
+
+    // Broad regions used only to tighten the returned rectangle around lit/active strokes.
+    private val segmentBounds = arrayOf(
+        floatArrayOf(.13f, .02f, .87f, .24f),
+        floatArrayOf(.60f, .12f, .88f, .48f),
+        floatArrayOf(.60f, .52f, .88f, .88f),
+        floatArrayOf(.13f, .76f, .87f, .98f),
+        floatArrayOf(.12f, .52f, .40f, .88f),
+        floatArrayOf(.12f, .12f, .40f, .48f),
+        floatArrayOf(.13f, .40f, .87f, .60f)
     )
 
     // The open spaces between horizontal bars should look like the background. This rejects
@@ -141,7 +174,9 @@ internal object ScaleDisplayRecognizer {
 
         val scaleX = width.toFloat() / smallWidth
         val scaleY = height.toFloat() / smallHeight
-        val scaledBoxes = chosen.boxes.map { box ->
+        val refinedBoxes = chosen.boxes.map { refineBox(integral, smallGray, smallWidth, smallHeight, it) }
+            .sortedBy { it.left }
+        val scaledBoxes = refinedBoxes.map { box ->
             DigitBox(
                 box.digit,
                 (box.left * scaleX).roundToInt().coerceIn(0, width - 1),
@@ -151,12 +186,25 @@ internal object ScaleDisplayRecognizer {
                 box.confidence
             )
         }
+        val decimals = decimalPlaces(format)
+        val boundaryIndex = scaledBoxes.size - decimals
+        val decimalX = when {
+            !chosen.hasDecimal -> -1
+            decimals == 0 -> scaledBoxes.last().right + max(2, scaledBoxes.last().width / 5)
+            boundaryIndex <= 0 -> (scaledBoxes.first().left - max(2, scaledBoxes.first().width / 5)).coerceAtLeast(0)
+            boundaryIndex >= scaledBoxes.size -> scaledBoxes.last().right + max(2, scaledBoxes.last().width / 5)
+            else -> (scaledBoxes[boundaryIndex - 1].right + scaledBoxes[boundaryIndex].left) / 2
+        }.coerceIn(if (chosen.hasDecimal) 0 else -1, width - 1)
+        val largeHeight = scaledBoxes.maxOfOrNull { it.height } ?: 1
+        val mainBaseline = scaledBoxes.filter { it.height >= largeHeight * .80f }
+            .map { it.bottom }.average().toInt()
+        val decimalY = (mainBaseline - max(1, largeHeight / 12)).coerceAtLeast(0)
         return Detection(
             chosen.digits,
             chosen.value,
             scaledBoxes,
-            if (chosen.hasDecimal) (chosen.decimalX * scaleX).roundToInt().coerceIn(0, width - 1) else -1,
-            if (chosen.hasDecimal) (chosen.decimalY * scaleY).roundToInt().coerceIn(0, height - 1) else -1,
+            decimalX,
+            if (chosen.hasDecimal) decimalY else -1,
             chosen.hasDecimal,
             chosen.confidence
         )
@@ -171,6 +219,81 @@ internal object ScaleDisplayRecognizer {
         val hasDecimal: Boolean,
         val confidence: Float
     )
+
+    private fun refineBox(
+        integral: IntArray,
+        gray: ByteArray,
+        width: Int,
+        height: Int,
+        box: DigitBox
+    ): DigitBox {
+        val x = box.left.coerceIn(0, width - 1)
+        val y = box.top.coerceIn(0, height - 1)
+        val w = box.width.coerceAtLeast(1)
+        val h = box.height.coerceAtLeast(1)
+        if (w < 7 || h < 10) return box
+        val background = backgroundZones.map { z ->
+            mean(
+                integral, width, height,
+                x + (z[0] * w).toInt(),
+                y + (z[1] * h).toInt(),
+                x + max((z[2] * w).toInt(), (z[0] * w).toInt() + 1),
+                y + max((z[3] * h).toInt(), (z[1] * h).toInt() + 1)
+            )
+        }.average().toFloat()
+        val mask = digitMasks[box.digit - '0']
+        var activeDifference = 0f
+        var activeCount = 0
+        for (i in segmentZones.indices) {
+            if ((mask and (1 shl i)) == 0) continue
+            val z = segmentZones[i]
+            val value = mean(
+                integral, width, height,
+                x + (z[0] * w).toInt(),
+                y + (z[1] * h).toInt(),
+                x + max((z[2] * w).toInt(), (z[0] * w).toInt() + 1),
+                y + max((z[3] * h).toInt(), (z[1] * h).toInt() + 1)
+            )
+            activeDifference += value - background
+            activeCount++
+        }
+        if (activeCount == 0) return box
+        val polarity = if (activeDifference >= 0f) 1 else -1
+        val magnitude = abs(activeDifference / activeCount)
+        val threshold = max(16f, magnitude * .28f)
+        var minX = width
+        var minY = height
+        var maxX = -1
+        var maxY = -1
+        for (segment in segmentBounds.indices) {
+            if ((mask and (1 shl segment)) == 0) continue
+            val z = segmentBounds[segment]
+            val x1 = (x + (z[0] * w).toInt()).coerceIn(0, width - 1)
+            val y1 = (y + (z[1] * h).toInt()).coerceIn(0, height - 1)
+            val x2 = (x + max((z[2] * w).toInt(), (z[0] * w).toInt() + 1)).coerceIn(x1 + 1, width)
+            val y2 = (y + max((z[3] * h).toInt(), (z[1] * h).toInt() + 1)).coerceIn(y1 + 1, height)
+            for (py in y1 until y2) {
+                for (px in x1 until x2) {
+                    val pixel = gray[py * width + px].toInt() and 0xff
+                    if ((pixel - background) * polarity >= threshold) {
+                        minX = min(minX, px)
+                        minY = min(minY, py)
+                        maxX = max(maxX, px)
+                        maxY = max(maxY, py)
+                    }
+                }
+            }
+        }
+        if (maxX < minX || maxY < minY) return box
+        val paddingX = max(1, w / 35)
+        val paddingY = max(1, h / 45)
+        return box.copy(
+            left = (minX - paddingX).coerceAtLeast(0),
+            top = (minY - paddingY).coerceAtLeast(0),
+            right = (maxX + paddingX + 1).coerceAtMost(width),
+            bottom = (maxY + paddingY + 1).coerceAtMost(height)
+        )
+    }
 
     private fun chooseReading(
         rows: List<DigitRow>,
@@ -346,8 +469,18 @@ internal object ScaleDisplayRecognizer {
         val gapDeviation = abs((samples[11] + samples[12]) * .5f - background)
         for (i in 0..6) samples[i] -= background
 
-        var best = 0f
-        var bestDigit = '?'
+        var top1 = 0f
+        var top2 = 0f
+        var top3 = 0f
+        var mask1 = 0
+        var mask2 = 0
+        var mask3 = 0
+        var polarity1 = 1
+        var polarity2 = 1
+        var polarity3 = 1
+        var digit1 = '?'
+        var digit2 = '?'
+        var digit3 = '?'
         for (polarity in intArrayOf(1, -1)) {
             for (digitIndex in digitMasks.indices) {
                 val mask = digitMasks[digitIndex]
@@ -381,14 +514,99 @@ internal object ScaleDisplayRecognizer {
                 val contrast = ((activeMean - 7f) / 30f).coerceIn(0f, 1f)
                 val gapFit = (1f - gapDeviation / max(1f, activeMean * .80f)).coerceIn(0f, 1f)
                 val score = activeFit * inactiveFit * contrast * gapFit
-                if (score > best) {
-                    best = score
-                    bestDigit = digitChars[digitIndex]
+                if (score > top1) {
+                    top3 = top2; mask3 = mask2; polarity3 = polarity2; digit3 = digit2
+                    top2 = top1; mask2 = mask1; polarity2 = polarity1; digit2 = digit1
+                    top1 = score; mask1 = mask; polarity1 = polarity; digit1 = digitChars[digitIndex]
+                } else if (score > top2) {
+                    top3 = top2; mask3 = mask2; polarity3 = polarity2; digit3 = digit2
+                    top2 = score; mask2 = mask; polarity2 = polarity; digit2 = digitChars[digitIndex]
+                } else if (score > top3) {
+                    top3 = score; mask3 = mask; polarity3 = polarity; digit3 = digitChars[digitIndex]
                 }
             }
         }
-        digitOut[0] = bestDigit
-        return best
+
+        if (top1 < .28f) {
+            digitOut[0] = digit1
+            return top1
+        }
+        val fineSamples = FloatArray(segmentSampleZones.size)
+        for (i in segmentSampleZones.indices) {
+            val z = segmentSampleZones[i]
+            fineSamples[i] = mean(
+                integral, width, height,
+                x + (z[0] * digitWidth).toInt(),
+                y + (z[1] * digitHeight).toInt(),
+                x + max((z[2] * digitWidth).toInt(), (z[0] * digitWidth).toInt() + 1),
+                y + max((z[3] * digitHeight).toInt(), (z[1] * digitHeight).toInt() + 1)
+            ) - background
+        }
+
+        var finalScore = 0f
+        var finalDigit = digit1
+        val candidateScores = floatArrayOf(top1, top2, top3)
+        val candidateMasks = intArrayOf(mask1, mask2, mask3)
+        val candidatePolarities = intArrayOf(polarity1, polarity2, polarity3)
+        val candidateDigits = charArrayOf(digit1, digit2, digit3)
+        for (candidate in candidateScores.indices) {
+            if (candidateScores[candidate] <= 0f) continue
+            val fit = continuityFit(
+                fineSamples,
+                candidateMasks[candidate],
+                candidatePolarities[candidate]
+            )
+            val score = candidateScores[candidate] * fit
+            if (score > finalScore) {
+                finalScore = score
+                finalDigit = candidateDigits[candidate]
+            }
+        }
+        digitOut[0] = finalDigit
+        return finalScore
+    }
+
+    private fun continuityFit(samples: FloatArray, mask: Int, polarity: Int): Float {
+        var activeSum = 0f
+        var activeCount = 0
+        var inactiveEnergy = 0f
+        var inactiveCount = 0
+        for (segment in 0..6) {
+            for (sample in 0..2) {
+                val value = samples[segment * 3 + sample] * polarity
+                if ((mask and (1 shl segment)) != 0) {
+                    activeSum += value
+                    activeCount++
+                }
+            }
+        }
+        val activeMean = activeSum / activeCount.coerceAtLeast(1)
+        if (activeMean < 7f) return 0f
+
+        var activeError = 0f
+        var covered = 0
+        for (segment in 0..6) {
+            for (sample in 0..2) {
+                val value = samples[segment * 3 + sample] * polarity
+                if ((mask and (1 shl segment)) != 0) {
+                    val delta = value - activeMean
+                    activeError += delta * delta
+                    if (value > max(5f, activeMean * .22f)) covered++
+                } else {
+                    val residual = max(0f, abs(value) - activeMean * .12f)
+                    inactiveEnergy += residual * residual
+                    inactiveCount++
+                }
+            }
+        }
+        val deviation = sqrt(activeError / activeCount.coerceAtLeast(1))
+        val inactiveDeviation = if (inactiveCount > 0) {
+            sqrt(inactiveEnergy / inactiveCount)
+        } else 0f
+        val consistency = (1f - deviation / max(1f, activeMean * .90f)).coerceIn(0f, 1f)
+        val offSegmentFit = (1f - inactiveDeviation / max(1f, activeMean * .65f)).coerceIn(0f, 1f)
+        val coverage = covered.toFloat() / activeCount.coerceAtLeast(1)
+        return consistency * offSegmentFit * coverage
     }
 
     private fun findRows(candidates: List<DigitBox>): List<DigitRow> {
