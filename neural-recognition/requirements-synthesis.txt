@@ -1,0 +1,4 @@
+Pillow==11.3.0
+numpy==2.2.6
+opencv-python-headless==4.12.0.88
+odfpy==1.4.1
