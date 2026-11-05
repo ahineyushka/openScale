@@ -166,10 +166,120 @@ def build_mask(rgb: np.ndarray, cfg: dict, target_digit: str):
     return mask, off
 
 
-def apply_inpaint(rgb: np.ndarray, mask: np.ndarray, radius: int) -> np.ndarray:
-    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    completed = cv2.inpaint(bgr, mask, radius, cv2.INPAINT_TELEA)
-    return cv2.cvtColor(completed, cv2.COLOR_BGR2RGB)
+def _family_foreground_mask(rgb: np.ndarray, cfg: dict) -> np.ndarray:
+    """Classify lit segment pixels; used only to avoid them when sampling background."""
+    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    th = cfg["threshold"]
+    if th["kind"] == "hsv_cyan":
+        return (
+            (hsv[:, :, 0] >= th["h_min"]) &
+            (hsv[:, :, 0] <= th["h_max"]) &
+            (hsv[:, :, 1] > th["s_min"]) &
+            (hsv[:, :, 2] > th["v_min"])
+        )
+    if th["kind"] == "gray_dark":
+        return gray <= th["max"]
+    if th["kind"] == "gray_bright":
+        return gray >= th["min"]
+    raise ValueError(f"unknown threshold kind: {th['kind']}")
+
+
+def _sample_background(rgb: np.ndarray, foreground: np.ndarray,
+                       rect: tuple[int, int, int, int],
+                       fallback: np.ndarray) -> np.ndarray:
+    x1, y1, x2, y2 = rect
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(rgb.shape[1], x2), min(rgb.shape[0], y2)
+    if x2 <= x1 or y2 <= y1:
+        return fallback.copy()
+    patch = rgb[y1:y2, x1:x2]
+    background_pixels = patch[~foreground[y1:y2, x1:x2]]
+    if len(background_pixels) < 6:
+        background_pixels = patch.reshape(-1, 3)
+    if len(background_pixels) == 0:
+        return fallback.copy()
+    return np.clip(np.median(background_pixels, axis=0), 0, 255).astype(np.uint8)
+
+
+def estimate_segment_backgrounds(rgb: np.ndarray, cfg: dict) -> dict[str, np.ndarray]:
+    """Estimate flat local background colours from the two holes inside the 8."""
+    bx1, by1, bx2, by2 = cfg["bbox"]
+    seg = cfg["segments"]
+    center_x = (bx1 + bx2) // 2
+    half_width = max(1, int((bx2 - bx1) * 0.10))
+    sample_x1, sample_x2 = center_x - half_width, center_x + half_width + 1
+
+    # The upper and lower holes are inside the display, away from its outer frame.
+    upper_hole = (sample_x1, seg["a"][3] + 1, sample_x2, seg["g"][1] - 1)
+    lower_hole = (sample_x1, seg["g"][3] + 1, sample_x2, seg["d"][1] - 1)
+    foreground = _family_foreground_mask(rgb, cfg)
+
+    glyph = rgb[by1:by2, bx1:bx2]
+    glyph_foreground = foreground[by1:by2, bx1:bx2]
+    non_lit = glyph[~glyph_foreground]
+    fallback = (
+        np.median(non_lit, axis=0).astype(np.uint8)
+        if len(non_lit) else np.median(glyph.reshape(-1, 3)).astype(np.uint8)
+    )
+
+    top = _sample_background(rgb, foreground, upper_hole, fallback)
+    bottom = _sample_background(rgb, foreground, lower_hole, fallback)
+    middle = np.clip(
+        np.rint((top.astype(np.float32) + bottom.astype(np.float32)) / 2),
+        0, 255
+    ).astype(np.uint8)
+    return {
+        "a": top, "b": top, "f": top,
+        "g": middle,
+        "d": bottom, "c": bottom, "e": bottom,
+    }
+
+
+def apply_flat_background_fill(
+    rgb: np.ndarray, cfg: dict, off_segments: set[str]
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """Erase complete calibrated segment footprints using solid background colour.
+
+    Each off segment rectangle is filled with a constant RGB value sampled from
+    the corresponding empty hole inside the photographed 8. Adjacent off-segment
+    intersections are filled with the mean of their local background colours.
+    There is deliberately no inpainting, blur, interpolation or pixel smearing.
+    """
+    colors = estimate_segment_backgrounds(rgb, cfg)
+    result = rgb.copy()
+    fill_mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+
+    for name in sorted(off_segments):
+        x1, y1, x2, y2 = cfg["segments"][name]
+        result[y1:y2, x1:x2] = colors[name]
+        fill_mask[y1:y2, x1:x2] = 255
+
+    junctions = (
+        ("a", "f"), ("a", "b"), ("g", "f"), ("g", "b"),
+        ("g", "e"), ("g", "c"), ("d", "e"), ("d", "c"),
+    )
+    for first, second in junctions:
+        if first not in off_segments or second not in off_segments:
+            continue
+        r1, r2 = cfg["segments"][first], cfg["segments"][second]
+        x1, y1 = max(r1[0], r2[0]), max(r1[1], r2[1])
+        x2, y2 = min(r1[2], r2[2]), min(r1[3], r2[3])
+        if x2 <= x1 or y2 <= y1:
+            continue
+        joint_color = np.clip(
+            np.rint((colors[first].astype(np.float32) +
+                     colors[second].astype(np.float32)) / 2),
+            0, 255
+        ).astype(np.uint8)
+        result[y1:y2, x1:x2] = joint_color
+        fill_mask[y1:y2, x1:x2] = 255
+
+    color_metadata = {
+        name: [int(channel) for channel in color]
+        for name, color in colors.items()
+    }
+    return result, fill_mask, color_metadata
 
 
 def foreground_pixels(rgb: np.ndarray, cfg: dict, segment_names: set[str]) -> int:
@@ -286,12 +396,13 @@ def run(zip_path: Path, outdir: Path, ods_path: Path | None = None) -> None:
             synthetic_value = (
                 original[:digit_index] + target + original[digit_index + 1:]
             )
-            mask, off_segments = build_mask(rgb, cfg, target)
-            masked_pixels = int(np.count_nonzero(mask))
+            off_segments = set(PATTERNS["8"]) - set(PATTERNS[target])
+            result, fill_mask, fill_colors = apply_flat_background_fill(
+                rgb, cfg, off_segments
+            )
+            masked_pixels = int(np.count_nonzero(fill_mask))
             if masked_pixels < 5:
-                raise ValueError(f"empty mask for {family} -> {target}")
-
-            result = apply_inpaint(rgb, mask, cfg["inpaint_radius"])
+                raise ValueError(f"empty flat-fill mask for {family} -> {target}")
             output_name = (
                 f"{family.replace(' ', '_')}_t{table_no}_"
                 f"{cfg['source_coordinate']}_{original.replace('.', '-')}_"
@@ -327,7 +438,8 @@ def run(zip_path: Path, outdir: Path, ods_path: Path | None = None) -> None:
                     100 * (after_kept - before_kept) / max(1, before_kept), 2
                 ),
                 "threshold": _threshold_label(cfg),
-                "inpaint_radius": cfg["inpaint_radius"],
+                "fill_method": "flat_local_background",
+                "fill_colors_rgb": json.dumps(fill_colors, ensure_ascii=False),
             }
             manifest.append(row)
             family_summary[family]["variants"].append(row)
