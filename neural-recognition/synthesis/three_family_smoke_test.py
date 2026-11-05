@@ -423,11 +423,27 @@ def run(zip_path: Path, outdir: Path, ods_path: Path | None = None) -> None:
             )
             Image.fromarray(result).save(samples_dir / output_name)
 
-            before_off = foreground_pixels(rgb, cfg, off_segments)
-            after_off = foreground_pixels(result, cfg, off_segments)
+            # Score before/after against the same segment partition from the original image.
+            regions, _ = build_segment_regions(rgb, cfg)
+            foreground_before = _family_foreground_mask(rgb, cfg)
+            foreground_after = _family_foreground_mask(result, cfg)
+            before_off = sum(
+                int(foreground_before[regions[seg] > 0].sum())
+                for seg in off_segments
+            )
+            after_off = sum(
+                int(foreground_after[regions[seg] > 0].sum())
+                for seg in off_segments
+            )
             kept_segments = set(PATTERNS[target])
-            before_kept = foreground_pixels(rgb, cfg, kept_segments)
-            after_kept = foreground_pixels(result, cfg, kept_segments)
+            before_kept = sum(
+                int(foreground_before[regions[seg] > 0].sum())
+                for seg in kept_segments
+            )
+            after_kept = sum(
+                int(foreground_after[regions[seg] > 0].sum())
+                for seg in kept_segments
+            )
 
             row = {
                 "file": f"samples/{output_name}",
