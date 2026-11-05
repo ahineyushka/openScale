@@ -1,30 +1,31 @@
 # Three-family segment-removal smoke test
 
-This is a reproducible, manually calibrated prototype for turning a photographed seven-segment `8` into other digits by switching off selected segments.
+A reproducible, manually calibrated prototype for switching off segments of a photographed seven-segment `8` in real scale-display images.
 
-It tests one clean, annotated source crop per indicator family:
+It tests one annotated source crop per display family:
 
 - LED: table 1, coordinate `а4`, label `86.65`;
 - dark LCD (`тем. ЖК`): table 2, coordinate `д4`, label `53.8`;
 - light LCD (`Св. ЖК`): table 1, coordinate `е11`, label `58.00`.
 
-For each source, it generates nine alternatives (`0,1,2,3,4,5,6,7,9`) at the annotated position of the original `8`.
+Nine variants are produced per source: target digits `0,1,2,3,4,5,6,7,9`.
 
-## Erasure method
+## Current segment-erasure method
 
-The former OpenCV inpainting step has been removed. It created soft, blurred remnants in areas where a segment had been switched off.
+The previous approach used rectangles and/or inpainting. That did not follow the true shape of the seven bars and could leave blurred or glowing remnants.
 
-The current method instead:
-1. estimates a flat RGB background colour from the two empty holes inside the photographed `8`;
-2. assigns upper, middle and lower background colours to the corresponding segments;
-3. replaces the complete calibrated segment rectangle with that constant colour;
-4. preserves a shared junction only when the neighbouring segment remains lit; a junction is filled when both adjoining segments are switched off.
+The current method works with seven individually calibrated polygons whose edges follow the visible separator gaps between adjacent segments.
 
-There is no blur, inpainting, interpolation or texture synthesis. This intentionally produces a hard, flat fill. The sampled background colour can still differ slightly from local display gradients or reflections.
+1. Each polygon is a seed region for one of the seven segments.
+2. The family-specific foreground mask detects the lit segment pixels and their one-pixel fringe inside the glyph window.
+3. Every candidate pixel outside or at an overlapping polygon joint is assigned to the nearest segment polygon. This creates a disjoint seven-region partition: one pixel belongs to only one segment.
+4. The complete region assigned to a segment that is switched off is filled with a constant local background RGB colour sampled from the empty holes inside the source `8`.
+
+No inpainting, blur, interpolation, texture synthesis, or overlapping rectangular fill masks are used. The source contact sheets and ODS file remain unchanged; source crops are extracted in memory.
 
 ## Run
 
-Install the dependencies listed in `neural-recognition/requirements-synthesis.txt`, then run:
+Install dependencies from `neural-recognition/requirements-synthesis.txt`, then run:
 
 ```bash
 python neural-recognition/synthesis/three_family_smoke_test.py \
@@ -32,16 +33,16 @@ python neural-recognition/synthesis/three_family_smoke_test.py \
   --out /path/to/three-family-smoke-test
 ```
 
-The corrected ZIP already contains the paired `TestIndicatorsParameters.ods`. An external `--ods /path/to/file.ods` can override the embedded annotation file.
+The corrected ZIP contains the matching `TestIndicatorsParameters.ods`. An external `--ods /path/to/file.ods` may be supplied to override it.
 
-The script reads each original 3000×2000 contact sheet as-is and extracts the selected crop in memory. It does not split or rewrite the contact sheets. It writes three source crops, 27 synthetic PNG crops, a CSV manifest, JSON metrics and a Markdown report.
+The script writes three source crops, 27 synthetic PNG crops, a CSV manifest, JSON metrics and a Markdown report.
 
 ## Limitations
 
-- Glyph and segment coordinates are manually calibrated for these three examples.
-- One source sample per family does not prove that the calibration generalizes to the rest of that family.
-- The foreground-reduction metric is only a screening statistic. Pixels at shared joints may intentionally remain when they belong to a segment that must stay lit.
-- A constant fill cannot recreate real spatial gradients, glare or texture hidden beneath an illuminated segment.
-- This test does not train a neural network.
+- The seven polygons and glyph windows are manually calibrated for these three specific examples.
+- Nearest-polygon assignment is an approximation of the visible divider lines; it needs checking on additional examples and unusual segment designs.
+- A flat fill cannot reconstruct true display gradients, glare or reflections hidden underneath a lit segment.
+- A clean result on one sample per family does not establish generalization to all displays in that family.
+- This is a generator test, not a neural-network training run.
 
-Do not use the generated crops as a full training dataset until the calibration has been checked on more source examples, especially samples with glare, glow, blur and tilt.
+Do not use this tiny test set as a full training corpus. First validate the polygons on more `8` samples from each family, then difficult examples with glare, glow, blur and tilt.
