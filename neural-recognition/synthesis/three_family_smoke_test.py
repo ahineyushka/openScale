@@ -39,7 +39,6 @@ CONFIGS = {
             "g": (72, 63, 90, 70),
         },
         "threshold": {"kind": "hsv_cyan", "h_min": 80, "h_max": 130, "s_min": 80, "v_min": 150},
-        "dilate": 1, "inpaint_radius": 4,
     },
     "тем. ЖК": {
         "table": 2, "source_coordinate": "д4", "source_value": "53.8", "digit_index": 3,
@@ -51,7 +50,6 @@ CONFIGS = {
             "g": (163, 56, 175, 64),
         },
         "threshold": {"kind": "gray_dark", "max": 150},
-        "dilate": 1, "inpaint_radius": 3,
     },
     "Св. ЖК": {
         "source_coordinate": "е11", "source_value": "58.00", "digit_index": 1,
@@ -63,7 +61,6 @@ CONFIGS = {
             "g": (110, 64, 118, 70),
         },
         "threshold": {"kind": "gray_bright", "min": 160},
-        "dilate": 1, "inpaint_radius": 3,
     },
 }
 
@@ -131,39 +128,6 @@ def crop_tile(table_img: Image.Image, coord: str) -> np.ndarray:
     x = (col_no - 1) * 250
     y = LETTERS.index(row_letter) * 125
     return np.asarray(table_img.crop((x, y, x + 250, y + 125)).convert("RGB"))
-
-
-def build_mask(rgb: np.ndarray, cfg: dict, target_digit: str):
-    off = set(PATTERNS["8"]) - set(PATTERNS[target_digit])
-    mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
-    hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    th = cfg["threshold"]
-
-    if th["kind"] == "hsv_cyan":
-        foreground = (
-            (hsv[:, :, 0] >= th["h_min"]) &
-            (hsv[:, :, 0] <= th["h_max"]) &
-            (hsv[:, :, 1] > th["s_min"]) &
-            (hsv[:, :, 2] > th["v_min"])
-        )
-    elif th["kind"] == "gray_dark":
-        foreground = gray <= th["max"]
-    elif th["kind"] == "gray_bright":
-        foreground = gray >= th["min"]
-    else:
-        raise ValueError(f"unknown threshold {th['kind']}")
-
-    for seg in sorted(off):
-        x1, y1, x2, y2 = cfg["segments"][seg]
-        mask[y1:y2, x1:x2] = np.where(
-            foreground[y1:y2, x1:x2], 255, mask[y1:y2, x1:x2]
-        )
-
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    if cfg["dilate"]:
-        mask = cv2.dilate(mask, kernel, iterations=cfg["dilate"])
-    return mask, off
 
 
 def _family_foreground_mask(rgb: np.ndarray, cfg: dict) -> np.ndarray:
@@ -239,21 +203,40 @@ def estimate_segment_backgrounds(rgb: np.ndarray, cfg: dict) -> dict[str, np.nda
 def apply_flat_background_fill(
     rgb: np.ndarray, cfg: dict, off_segments: set[str]
 ) -> tuple[np.ndarray, np.ndarray, dict]:
-    """Erase complete calibrated segment footprints using solid background colour.
+    """Erase complete calibrated segment rectangles with flat local background.
 
-    Each off segment rectangle is filled with a constant RGB value sampled from
-    the corresponding empty hole inside the photographed 8. Adjacent off-segment
-    intersections are filled with the mean of their local background colours.
-    There is deliberately no inpainting, blur, interpolation or pixel smearing.
+    No inpainting, blur, interpolation or texture synthesis is performed. A
+    shared junction is preserved when its neighbouring segment remains lit;
+    it is filled only when both adjoining segments are switched off.
     """
     colors = estimate_segment_backgrounds(rgb, cfg)
     result = rgb.copy()
     fill_mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+    neighbours = {
+        "a": ("f", "b"), "f": ("a", "g"), "b": ("a", "g"),
+        "g": ("f", "b", "e", "c"), "e": ("g", "d"),
+        "c": ("g", "d"), "d": ("e", "c"),
+    }
 
-    for name in sorted(off_segments):
-        x1, y1, x2, y2 = cfg["segments"][name]
-        result[y1:y2, x1:x2] = colors[name]
-        fill_mask[y1:y2, x1:x2] = 255
+    for seg in sorted(off_segments):
+        x1, y1, x2, y2 = cfg["segments"][seg]
+        mask = np.zeros(rgb.shape[:2], dtype=np.uint8)
+        mask[y1:y2, x1:x2] = 255
+
+        # Preserve shared pixels that belong to an adjacent segment that
+        # the target digit must keep lit.
+        protected = np.zeros_like(mask)
+        for other in neighbours[seg]:
+            if other in off_segments:
+                continue
+            ox1, oy1, ox2, oy2 = cfg["segments"][other]
+            xa, ya = max(x1, ox1), max(y1, oy1)
+            xb, yb = min(x2, ox2), min(y2, oy2)
+            if xb > xa and yb > ya:
+                protected[ya:yb, xa:xb] = 255
+        mask[protected > 0] = 0
+        result[mask > 0] = colors[seg]
+        fill_mask[mask > 0] = 255
 
     junctions = (
         ("a", "f"), ("a", "b"), ("g", "f"), ("g", "b"),
@@ -328,10 +311,10 @@ def write_report(summary: dict, outdir: Path) -> None:
         )
     lines += [
         "", "## Interpretation", "",
-        "- LED uses a cyan HSV foreground mask; its dilation is calibrated for the visible glow.",
-        "- Dark LCD uses dark grayscale pixels inside manually calibrated segment zones.",
-        "- Light LCD uses bright grayscale pixels inside manually calibrated segment zones.",
-        "- Each family has its own manually measured digit and segment coordinates, threshold, dilation and inpainting radius.",
+        "- Each switched-off segment footprint is replaced by a constant RGB background colour sampled from the empty holes inside the same photographed 8.",
+        "- No inpainting, blur, interpolation or texture reconstruction is used.",
+        "- Shared junction pixels are preserved when the neighbouring segment remains lit, and filled when both adjoining segments are switched off.",
+        "- LED, dark LCD and light LCD use separate manually calibrated segment coordinates and family-specific thresholds for background sampling and metrics.",
         "- The reduction metric is a simple threshold-pixel count inside the segments intended to be off. It is a screening metric, not a human quality score.",
         "- The kept-segment metric checks for unwanted change to segments that should remain lit; it does not replace visual inspection.",
         "- A single successful glyph per family is insufficient to validate generalization across all images in that family.", ""
